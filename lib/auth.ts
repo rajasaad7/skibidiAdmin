@@ -6,9 +6,20 @@ export async function checkAuth() {
   return isAuthenticated;
 }
 
-export async function setAuth() {
+export async function getAdminEmail() {
+  const cookieStore = await cookies();
+  return cookieStore.get('super_admin_email')?.value || 'admin@linkwatcher.io';
+}
+
+export async function setAuth(email: string) {
   const cookieStore = await cookies();
   cookieStore.set('super_admin_auth', 'true', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+    path: '/'
+  });
+  cookieStore.set('super_admin_email', email, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7, // 7 days
@@ -19,4 +30,5 @@ export async function setAuth() {
 export async function clearAuth() {
   const cookieStore = await cookies();
   cookieStore.delete('super_admin_auth');
+  cookieStore.delete('super_admin_email');
 }

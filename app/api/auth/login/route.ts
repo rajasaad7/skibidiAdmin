@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const validPassword = process.env.SUPER_ADMIN_PASSWORD;
 
     if (email === validEmail && password === validPassword) {
-      await setAuth();
+      await setAuth(email);
       return NextResponse.json({ success: true });
     }
 

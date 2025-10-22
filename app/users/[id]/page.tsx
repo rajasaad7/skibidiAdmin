@@ -19,8 +19,6 @@ interface KeywordData {
   _id: string;
   keyword: string;
   disabled: boolean;
-  position?: number;
-  url: string;
   createdAt: string;
   projectId: string;
   projects?: { name: string };
@@ -132,6 +130,12 @@ export default function UserDetailsPage() {
     disabled: false,
     projectId: ''
   });
+  const [editingKeyword, setEditingKeyword] = useState<KeywordData | null>(null);
+  const [keywordFormData, setKeywordFormData] = useState({
+    keyword: '',
+    disabled: false,
+    projectId: ''
+  });
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -218,6 +222,73 @@ export default function UserDetailsPage() {
     }
   };
 
+  const handleEditKeyword = (keyword: KeywordData) => {
+    setEditingKeyword(keyword);
+    setKeywordFormData({
+      keyword: keyword.keyword,
+      disabled: keyword.disabled,
+      projectId: keyword.projectId
+    });
+  };
+
+  const handleUpdateKeyword = async () => {
+    if (!editingKeyword) return;
+
+    try {
+      const response = await fetch(`/api/keywords/${editingKeyword._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(keywordFormData)
+      });
+
+      if (response.ok) {
+        // Refresh the user details
+        const detailsResponse = await fetch(`/api/users/${userId}`);
+        const data = await detailsResponse.json();
+        if (data.success) {
+          setDetails(data.details);
+        }
+        setEditingKeyword(null);
+        alert('Keyword updated successfully!');
+      } else {
+        alert('Failed to update keyword');
+      }
+    } catch (error) {
+      console.error('Error updating keyword:', error);
+      alert('Error updating keyword');
+    }
+  };
+
+  const handleDeleteKeyword = async () => {
+    if (!editingKeyword) return;
+
+    if (!confirm('Are you sure you want to delete this keyword? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/keywords/${editingKeyword._id}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        // Refresh the user details
+        const detailsResponse = await fetch(`/api/users/${userId}`);
+        const data = await detailsResponse.json();
+        if (data.success) {
+          setDetails(data.details);
+        }
+        setEditingKeyword(null);
+        alert('Keyword deleted successfully!');
+      } else {
+        alert('Failed to delete keyword');
+      }
+    } catch (error) {
+      console.error('Error deleting keyword:', error);
+      alert('Error deleting keyword');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -256,7 +327,14 @@ export default function UserDetailsPage() {
               <User className="w-8 h-8 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{details.user.fullName}</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-bold text-gray-900">{details.user.fullName}</h2>
+                {details.subscription && (
+                  <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-md bg-purple-100 text-purple-800">
+                    {details.subscription.planName}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2 text-gray-600 mt-1">
                 <Mail className="w-4 h-4" />
                 {details.user.email}
@@ -284,118 +362,220 @@ export default function UserDetailsPage() {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        {/* Workspace Activity */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Package className="w-5 h-5 text-purple-600" />
-            Workspace Activity
-          </h3>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Total Workspaces</span>
-              <span className="text-lg font-bold text-gray-900">{details.stats.totalWorkspaces}</span>
+      {/* Enhanced Activity Overview */}
+      <div className="bg-white rounded-xl shadow-sm p-6 mb-6 border border-gray-200">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Activity Overview</h3>
+            <p className="text-sm text-gray-600 mt-0.5">Detailed breakdown of user engagement and performance</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1.5 bg-gray-50 rounded-lg text-xs font-medium text-gray-700 border border-gray-200">
+              Total Workspaces: <span className="font-bold text-gray-900">{details.stats.totalWorkspaces}</span>
+            </span>
+            {details.subscription ? (
+              <div className="relative group">
+                <span className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg text-xs font-semibold text-white cursor-help">
+                  {details.subscription.planName} • {details.subscription.currency} {(Number(details.subscription.unitPrice) / 100).toFixed(2)}/mo
+                </span>
+                {/* Tooltip */}
+                <div className="absolute top-full right-0 mt-2 w-64 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <div className="space-y-2">
+                    <div className="flex justify-between pb-2 border-b border-gray-700">
+                      <span className="text-gray-400">Plan</span>
+                      <span className="font-semibold">{details.subscription.planName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Status</span>
+                      <span className="font-semibold capitalize text-green-400">{details.subscription.status}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Price</span>
+                      <span className="font-semibold">{details.subscription.currency} {(Number(details.subscription.unitPrice) / 100).toFixed(2)}</span>
+                    </div>
+                    {details.subscription.nextBillDate && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Next Billing</span>
+                        <span className="font-semibold">{new Date(details.subscription.nextBillDate).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between pt-2 border-t border-gray-700">
+                      <span className="text-gray-400">Subscribed</span>
+                      <span className="font-semibold">{new Date(details.subscription.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  {/* Arrow */}
+                  <div className="absolute -top-1 right-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+                </div>
+              </div>
+            ) : (
+              <span className="px-3 py-1.5 bg-gray-100 rounded-lg text-xs font-medium text-gray-600 border border-gray-200">
+                Free Plan
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* Links Progress */}
+          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <LinkIcon className="w-4 h-4 text-blue-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-700">Links Health</span>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Paid Organizations</span>
-              <span className="font-semibold text-green-600">{details.subscription ? '1' : '0'}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-end">
+                <span className="text-2xl font-bold text-gray-900">{details.stats.totalLinks}</span>
+                <span className="text-xs text-gray-500">total</span>
+              </div>
+              {details.stats.totalLinks > 0 && (
+                <>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-green-500 to-emerald-500 h-full rounded-full transition-all"
+                      style={{ width: `${(details.stats.activeLinks / details.stats.totalLinks) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-green-600 font-semibold">{Math.round((details.stats.activeLinks / details.stats.totalLinks) * 100)}% active</span>
+                    <span className="text-red-600">{details.stats.disabledLinks} disabled</span>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="border-t border-gray-200 my-3"></div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Total Projects</span>
-              <span className="text-lg font-bold text-gray-900">{details.stats.totalProjects}</span>
+          </div>
+
+          {/* Keywords Progress */}
+          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                <Target className="w-4 h-4 text-purple-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-700">Keywords Health</span>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Active Projects</span>
-              <span className="font-semibold text-green-600">{details.stats.activeProjects}</span>
+            <div className="space-y-2">
+              <div className="flex justify-between items-end">
+                <span className="text-2xl font-bold text-gray-900">{details.stats.totalKeywords}</span>
+                <span className="text-xs text-gray-500">total</span>
+              </div>
+              {details.stats.totalKeywords > 0 && (
+                <>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 h-full rounded-full transition-all"
+                      style={{ width: `${(details.stats.activeKeywords / details.stats.totalKeywords) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-purple-600 font-semibold">{Math.round((details.stats.activeKeywords / details.stats.totalKeywords) * 100)}% active</span>
+                    <span className="text-red-600">{details.stats.disabledKeywords} disabled</span>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Inactive Projects</span>
-              <span className="font-semibold text-orange-600">{details.stats.totalProjects - details.stats.activeProjects}</span>
+          </div>
+
+          {/* Projects Status */}
+          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
+                <Globe className="w-4 h-4 text-orange-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-700">Projects Status</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-end">
+                <span className="text-2xl font-bold text-gray-900">{details.stats.totalProjects}</span>
+                <span className="text-xs text-gray-500">total</span>
+              </div>
+              {details.stats.totalProjects > 0 && (
+                <>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-orange-500 to-amber-500 h-full rounded-full transition-all"
+                      style={{ width: `${(details.stats.activeProjects / details.stats.totalProjects) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-orange-600 font-semibold">{Math.round((details.stats.activeProjects / details.stats.totalProjects) * 100)}% active</span>
+                    <span className="text-gray-600">{details.stats.totalProjects - details.stats.activeProjects} inactive</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Marketplace Orders */}
+          <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                <ShoppingCart className="w-4 h-4 text-green-600" />
+              </div>
+              <span className="text-xs font-medium text-gray-700">Marketplace Orders</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-end">
+                <span className="text-sm text-gray-600">Total Orders</span>
+                <span className="text-2xl font-bold text-gray-900">{details.marketplaceOrdersBuyer.length + details.marketplaceOrdersPublisher.length}</span>
+              </div>
+              {(details.marketplaceOrdersBuyer.length + details.marketplaceOrdersPublisher.length) > 0 && (
+                <>
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden flex">
+                    <div
+                      className="bg-gradient-to-r from-blue-500 to-cyan-500 h-full transition-all"
+                      style={{ width: `${(details.marketplaceOrdersBuyer.length / (details.marketplaceOrdersBuyer.length + details.marketplaceOrdersPublisher.length)) * 100}%` }}
+                    ></div>
+                    <div
+                      className="bg-gradient-to-r from-green-500 to-emerald-500 h-full transition-all"
+                      style={{ width: `${(details.marketplaceOrdersPublisher.length / (details.marketplaceOrdersBuyer.length + details.marketplaceOrdersPublisher.length)) * 100}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <span className="text-blue-600 font-semibold">{details.marketplaceOrdersBuyer.length}</span>
+                      <span className="text-gray-500">As Buyer</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                      <span className="text-green-600 font-semibold">{details.marketplaceOrdersPublisher.length}</span>
+                      <span className="text-gray-500">As Seller</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Subscription */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-green-600" />
-            Subscription
-          </h3>
-          {details.subscription ? (
-            <div className="space-y-3">
-              <div>
-                <span className="text-sm text-gray-600">Plan</span>
-                <p className="text-lg font-bold text-gray-900">{details.subscription.planName}</p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-600">Status</span>
-                <p className="font-semibold text-green-600 capitalize">{details.subscription.status}</p>
-              </div>
-              <div>
-                <span className="text-sm text-gray-600">Price</span>
-                <p className="text-lg font-bold text-gray-900">
-                  {details.subscription.currency} {(Number(details.subscription.unitPrice) / 100).toFixed(2)}
-                </p>
-              </div>
-              {details.subscription.nextBillDate && (
-                <div>
-                  <span className="text-sm text-gray-600">Next Bill Date</span>
-                  <p className="text-sm text-gray-900">{new Date(details.subscription.nextBillDate).toLocaleDateString()}</p>
-                </div>
-              )}
-              <div>
-                <span className="text-sm text-gray-600">Subscribed On</span>
-                <p className="text-sm text-gray-900">{new Date(details.subscription.createdAt).toLocaleDateString()}</p>
-              </div>
+        {/* Quick Stats Bar */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-center border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Orders</div>
+              <div className="text-lg font-bold text-gray-900">{details.marketplace.totalOrders}</div>
             </div>
-          ) : (
-            <p className="text-gray-500">No active subscription</p>
-          )}
-        </div>
-
-        {/* Marketplace */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <ShoppingCart className="w-5 h-5 text-purple-600" />
-            Marketplace
-          </h3>
-          <div className="space-y-3">
-            <div>
-              <span className="text-sm text-gray-600">As Buyer</span>
-              <div className="mt-2 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Total Orders</span>
-                  <span className="font-semibold text-gray-900">{details.marketplace.totalOrders}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Completed</span>
-                  <span className="font-semibold text-green-600">{details.marketplace.completedOrders}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Total Spent</span>
-                  <span className="font-semibold text-gray-900">${details.marketplace.totalSpent.toFixed(2)}</span>
-                </div>
-              </div>
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-center border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Completed</div>
+              <div className="text-lg font-bold text-green-600">{details.marketplace.completedOrders}</div>
             </div>
-            <div className="border-t border-gray-200 my-3"></div>
-            <div>
-              <span className="text-sm text-gray-600">As Publisher</span>
-              <div className="mt-2 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Total Domains</span>
-                  <span className="font-semibold text-gray-900">{details.marketplace.totalDomains}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Verified</span>
-                  <span className="font-semibold text-green-600">{details.marketplace.verifiedDomains}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500">Total Earnings</span>
-                  <span className="font-semibold text-gray-900">${details.marketplace.totalEarnings.toFixed(2)}</span>
-                </div>
-              </div>
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-center border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Domains</div>
+              <div className="text-lg font-bold text-gray-900">{details.marketplace.totalDomains}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-center border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Verified</div>
+              <div className="text-lg font-bold text-green-600">{details.marketplace.verifiedDomains}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-center border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Active Links</div>
+              <div className="text-lg font-bold text-blue-600">{details.stats.activeLinks}</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg px-3 py-2 text-center border border-gray-200">
+              <div className="text-xs text-gray-600 mb-1">Active Keywords</div>
+              <div className="text-lg font-bold text-purple-600">{details.stats.activeKeywords}</div>
             </div>
           </div>
         </div>
@@ -512,9 +692,7 @@ export default function UserDetailsPage() {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Keyword</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">URL</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Project</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Rank</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Status</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Created</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Actions</th>
@@ -524,22 +702,7 @@ export default function UserDetailsPage() {
                     {details.keywords.map((keyword) => (
                       <tr key={keyword._id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{keyword.keyword}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <a href={keyword.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
-                            {keyword.url.length > 40 ? keyword.url.substring(0, 40) + '...' : keyword.url}
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{keyword.projects?.name || 'N/A'}</td>
-                        <td className="px-4 py-3 text-sm">
-                          {keyword.position ? (
-                            <span className={`font-semibold ${keyword.position <= 3 ? 'text-green-600' : keyword.position <= 10 ? 'text-blue-600' : 'text-gray-600'}`}>
-                              #{keyword.position}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
                         <td className="px-4 py-3 text-sm">
                           {keyword.disabled ? (
                             <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Disabled</span>
@@ -550,16 +713,14 @@ export default function UserDetailsPage() {
                         <td className="px-4 py-3 text-sm text-gray-600">{new Date(keyword.createdAt).toLocaleDateString()}</td>
                         <td className="px-4 py-3 text-sm">
                           <div className="flex items-center gap-2">
-                            <a
-                              href={keyword.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              onClick={() => handleEditKeyword(keyword)}
                               className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100"
-                              title="Open URL in new tab"
+                              title="Edit keyword details"
                             >
-                              <ExternalLink className="w-3 h-3" />
-                              View
-                            </a>
+                              <Edit className="w-3 h-3" />
+                              Details
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -872,7 +1033,7 @@ export default function UserDetailsPage() {
                     className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    Disabled {linkFormData.disabled && <span className="text-red-600">(Link is currently disabled)</span>}
+                    Disable link {linkFormData.disabled && <span className="text-red-600">(Warning: Link will be disabled)</span>}
                   </span>
                 </label>
               </div>
@@ -930,6 +1091,109 @@ export default function UserDetailsPage() {
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                 >
                   Update Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Keyword Edit Modal */}
+      {editingKeyword && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Keyword</h3>
+              <button
+                onClick={() => setEditingKeyword(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Keyword Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Keyword
+                </label>
+                <input
+                  type="text"
+                  value={keywordFormData.keyword}
+                  onChange={(e) => setKeywordFormData({ ...keywordFormData, keyword: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter keyword"
+                />
+              </div>
+
+              {/* Project Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Project
+                </label>
+                <select
+                  value={keywordFormData.projectId}
+                  onChange={(e) => setKeywordFormData({ ...keywordFormData, projectId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Select a project</option>
+                  {details?.projects.map((project) => (
+                    <option key={project._id} value={project._id}>
+                      {project.name} ({project.workspaces?.name || 'No workspace'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Toggle */}
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={keywordFormData.disabled}
+                    onChange={(e) => setKeywordFormData({ ...keywordFormData, disabled: e.target.checked })}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Disable keyword {keywordFormData.disabled && <span className="text-red-600">(Warning: Keyword will be disabled)</span>}
+                  </span>
+                </label>
+              </div>
+
+              {/* Keyword Info */}
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Created:</span>
+                  <span className="font-medium">{new Date(editingKeyword.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Keyword ID:</span>
+                  <code className="text-xs bg-white px-2 py-1 rounded border">{editingKeyword._id}</code>
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
+              <button
+                onClick={handleDeleteKeyword}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Keyword
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setEditingKeyword(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateKeyword}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  Update Keyword
                 </button>
               </div>
             </div>

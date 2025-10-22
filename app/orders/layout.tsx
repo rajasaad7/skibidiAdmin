@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { checkAuth } from '@/lib/auth';
+import { checkAuth, getAdminEmail } from '@/lib/auth';
 import Sidebar from '@/components/Sidebar';
 
 export default async function OrdersLayout({
@@ -13,10 +13,12 @@ export default async function OrdersLayout({
     redirect('/login');
   }
 
+  const adminEmail = await getAdminEmail();
+
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-auto">
+      <Sidebar adminEmail={adminEmail} />
+      <main className="flex-1 p-8 ml-64 overflow-auto">
         {children}
       </main>
     </div>

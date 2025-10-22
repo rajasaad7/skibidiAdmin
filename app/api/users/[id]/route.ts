@@ -49,7 +49,7 @@ export async function GET(
       // Get keywords stats
       supabase.from('keywords').select('_id', { count: 'exact', head: true }).eq('userId', userId),
       // Get all keywords with full details
-      supabase.from('keywords').select('_id, keyword, disabled, position, url, createdAt, projectId, projects(name)').eq('userId', userId).order('createdAt', { ascending: false }),
+      supabase.from('keywords').select('_id, keyword, disabled, createdAt, projectId, projects(name)').eq('userId', userId).order('createdAt', { ascending: false }),
       supabase.from('keywords').select('_id', { count: 'exact', head: true }).eq('userId', userId).or('disabled.is.null,disabled.eq.false'),
 
       // Get projects stats (through workspaces)
