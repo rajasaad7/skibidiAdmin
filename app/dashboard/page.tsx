@@ -86,7 +86,7 @@ async function getMarketplaceStats() {
 
     // Category distribution
     const categoryCount = (categoryStatsRes.data || []).reduce((acc: any, domain) => {
-      const cat = domain.domain_categories?.name || 'Uncategorized';
+      const cat = domain.domain_categories?.[0]?.name || 'Uncategorized';
       acc[cat] = (acc[cat] || 0) + 1;
       return acc;
     }, {});
