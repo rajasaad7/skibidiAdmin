@@ -107,11 +107,12 @@ async function getMarketplaceStats() {
           id,
           name: publishersMap.get(id)?.fullName || 'Unknown',
           email: publishersMap.get(id)?.email || '',
-          earnings
+          earnings: Number(earnings)
         })),
       categoryDistribution: Object.entries(categoryCount)
         .sort((a: any, b: any) => b[1] - a[1])
-        .slice(0, 5),
+        .slice(0, 5)
+        .map(([name, count]) => [name, Number(count)] as [string, number]),
     };
   } catch (error) {
     console.error('Error fetching marketplace stats:', error);
