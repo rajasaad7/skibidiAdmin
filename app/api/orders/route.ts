@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
       .from('marketplace_orders')
       .select(`
         *,
-        domain:domains(domain)
+        domains(domainName)
       `)
       .order('createdAt', { ascending: false });
 

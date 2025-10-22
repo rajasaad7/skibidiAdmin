@@ -319,7 +319,7 @@ async function getMonitoringStats() {
     // Fetch project details
     const { data: projectsData } = await supabase
       .from('projects')
-      .select('_id, name')
+      .select('_id, name, website')
       .in('_id', topProjectIds);
 
     const projectsMap = new Map((projectsData || []).map(project => [project._id, project]));
@@ -330,6 +330,7 @@ async function getMonitoringStats() {
       .map(([projectId, count]) => ({
         projectId,
         projectName: projectsMap.get(projectId)?.name || 'Unknown',
+        projectWebsite: projectsMap.get(projectId)?.website || null,
         linkCount: count
       }));
 

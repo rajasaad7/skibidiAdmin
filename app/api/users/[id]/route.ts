@@ -54,7 +54,7 @@ export async function GET(
 
       // Get projects stats (through workspaces)
       workspaceIds.length > 0
-        ? supabase.from('projects').select('_id, name, disabled, disabledLastActive, createdAt, workspaceId, workspaces(name)').in('workspaceId', workspaceIds).order('createdAt', { ascending: false })
+        ? supabase.from('projects').select('_id, name, website, disabled, disabledLastActive, createdAt, workspaceId, workspaces(name)').in('workspaceId', workspaceIds).order('createdAt', { ascending: false })
         : Promise.resolve({ data: [] }),
 
       // Get workspaces count

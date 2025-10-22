@@ -27,6 +27,7 @@ interface KeywordData {
 interface ProjectData {
   _id: string;
   name: string;
+  website?: string;
   disabled: boolean;
   disabledLastActive: boolean;
   createdAt: string;
@@ -135,6 +136,12 @@ export default function UserDetailsPage() {
     keyword: '',
     disabled: false,
     projectId: ''
+  });
+  const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
+  const [projectFormData, setProjectFormData] = useState({
+    name: '',
+    disabled: false,
+    disabledLastActive: false,
   });
 
   useEffect(() => {
@@ -286,6 +293,73 @@ export default function UserDetailsPage() {
     } catch (error) {
       console.error('Error deleting keyword:', error);
       alert('Error deleting keyword');
+    }
+  };
+
+  const handleEditProject = (project: ProjectData) => {
+    setEditingProject(project);
+    setProjectFormData({
+      name: project.name,
+      disabled: project.disabled,
+      disabledLastActive: project.disabledLastActive,
+    });
+  };
+
+  const handleUpdateProject = async () => {
+    if (!editingProject) return;
+
+    try {
+      const response = await fetch(`/api/projects/${editingProject._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(projectFormData)
+      });
+
+      if (response.ok) {
+        // Refresh the user details
+        const detailsResponse = await fetch(`/api/users/${userId}`);
+        const data = await detailsResponse.json();
+        if (data.success) {
+          setDetails(data.details);
+        }
+        setEditingProject(null);
+        alert('Project updated successfully!');
+      } else {
+        alert('Failed to update project');
+      }
+    } catch (error) {
+      console.error('Error updating project:', error);
+      alert('Error updating project');
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!editingProject) return;
+
+    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${editingProject._id}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        // Refresh the user details
+        const detailsResponse = await fetch(`/api/users/${userId}`);
+        const data = await detailsResponse.json();
+        if (data.success) {
+          setDetails(data.details);
+        }
+        setEditingProject(null);
+        alert('Project deleted successfully!');
+      } else {
+        alert('Failed to delete project');
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      alert('Error deleting project');
     }
   };
 
@@ -741,6 +815,7 @@ export default function UserDetailsPage() {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Project Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Website</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Workspace</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Status</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Created</th>
@@ -751,6 +826,16 @@ export default function UserDetailsPage() {
                     {details.projects.map((project) => (
                       <tr key={project._id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{project.name}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {project.website ? (
+                            <a href={project.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                              {project.website.length > 40 ? project.website.substring(0, 40) + '...' : project.website}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">N/A</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{project.workspaces?.name || 'N/A'}</td>
                         <td className="px-4 py-3 text-sm">
                           {project.disabled ? (
@@ -763,9 +848,15 @@ export default function UserDetailsPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{new Date(project.createdAt).toLocaleDateString()}</td>
                         <td className="px-4 py-3 text-sm">
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-gray-500">Project ID:</span>
-                            <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">{project._id.substring(0, 8)}...</code>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEditProject(project)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100"
+                              title="Edit project details"
+                            >
+                              <Edit className="w-3 h-3" />
+                              Details
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1091,6 +1182,110 @@ export default function UserDetailsPage() {
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
                 >
                   Update Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project Edit Modal */}
+      {editingProject && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Project</h3>
+              <button
+                onClick={() => setEditingProject(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Project Name Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Project Name
+                </label>
+                <input
+                  type="text"
+                  value={projectFormData.name}
+                  onChange={(e) => setProjectFormData({ ...projectFormData, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter project name"
+                />
+              </div>
+
+              {/* Status Toggles */}
+              <div className="space-y-3">
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={projectFormData.disabled}
+                      onChange={(e) => setProjectFormData({ ...projectFormData, disabled: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Disable project {projectFormData.disabled && <span className="text-red-600">(Warning: Project will be disabled)</span>}
+                    </span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={projectFormData.disabledLastActive}
+                      onChange={(e) => setProjectFormData({ ...projectFormData, disabledLastActive: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      Mark as inactive {projectFormData.disabledLastActive && <span className="text-yellow-600">(Warning: Project will be marked inactive)</span>}
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Project Info */}
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Workspace:</span>
+                  <span className="font-medium">{editingProject.workspaces?.name || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Created:</span>
+                  <span className="font-medium">{new Date(editingProject.createdAt).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Project ID:</span>
+                  <code className="text-xs bg-white px-2 py-1 rounded border">{editingProject._id}</code>
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
+              <button
+                onClick={handleDeleteProject}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Project
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setEditingProject(null)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateProject}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  Update Project
                 </button>
               </div>
             </div>
