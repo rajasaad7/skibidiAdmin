@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X } from 'lucide-react';
 import OfferingModal from '@/components/OfferingModal';
 
 interface PublisherOffering {
@@ -57,16 +57,26 @@ export default function DomainsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
-  const [stats, setStats] = useState({ total: 0, pending: 0, verified: 0, rejected: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, verified: 0, rejected: 0, domainsWithOwner: 0, domainsWithReseller: 0 });
   const [editingSEO, setEditingSEO] = useState<string | null>(null);
   const [seoMetrics, setSeoMetrics] = useState({ domainRating: '', domainAuthority: '', spamScore: '', organicTraffic: '' });
   const [viewingOffering, setViewingOffering] = useState<{ domain: Domain; offering: PublisherOffering; index: number } | null>(null);
+  const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set());
+  const [uploadingCSV, setUploadingCSV] = useState(false);
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; updatedCount: number; errors?: string[]; totalProcessed: number } | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importType, setImportType] = useState<'file' | 'paste'>('file');
+  const [pastedData, setPastedData] = useState<string>('');
+  const [parsedRows, setParsedRows] = useState<{ domainName: string; dr: string; da: string; traffic: string; spamScore: string }[]>([]);
 
   const fetchDomains = async () => {
     setLoading(true);
     try {
+      // Fetch filtered domains for display
       const params = new URLSearchParams();
-      if (filter !== 'all') params.append('status', filter);
+      if (filter !== 'all' && filter !== 'with_owner' && filter !== 'reseller_only') {
+        params.append('status', filter);
+      }
       params.append('page', page.toString());
 
       const url = `/api/domains?${params.toString()}`;
@@ -179,6 +189,397 @@ export default function DomainsPage() {
     }
   };
 
+  const getFilteredDomains = () => {
+    let filtered = domains.filter(domain =>
+      domain.domainName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      domain.domain_categories?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    // Apply owner/reseller filters client-side
+    if (filter === 'with_owner') {
+      filtered = filtered.filter(domain =>
+        domain.publisherOfferings.some(o => o.domainType === 'owner')
+      );
+    } else if (filter === 'reseller_only') {
+      filtered = filtered.filter(domain =>
+        domain.publisherOfferings.some(o => o.domainType === 'reseller') &&
+        !domain.publisherOfferings.some(o => o.domainType === 'owner')
+      );
+    }
+
+    return filtered;
+  };
+
+  const toggleSelectDomain = (domainId: string) => {
+    setSelectedDomains(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(domainId)) {
+        newSet.delete(domainId);
+      } else {
+        newSet.add(domainId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const filteredDomains = getFilteredDomains();
+    if (selectedDomains.size === filteredDomains.length) {
+      setSelectedDomains(new Set());
+    } else {
+      setSelectedDomains(new Set(filteredDomains.map(d => d._id)));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
+
+    if (selectedDomainsList.length === 0) {
+      alert('Please select at least one domain');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to approve all pending publisher offerings for ${selectedDomainsList.length} selected domain(s)?`)) {
+      return;
+    }
+
+    try {
+      const updates = [];
+      selectedDomainsList.forEach(domain => {
+        domain.publisherOfferings.forEach((offering, index) => {
+          if (offering.adminApproved === null || offering.adminApproved === undefined) {
+            updates.push({
+              domainId: domain._id,
+              offeringIndex: index
+            });
+          }
+        });
+      });
+
+      if (updates.length === 0) {
+        alert('No pending offerings found in selected domains');
+        return;
+      }
+
+      const promises = updates.map(update =>
+        fetch('/api/domains/approve-offering', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(update)
+        })
+      );
+
+      await Promise.all(promises);
+      alert(`Successfully approved ${updates.length} pending offering(s)`);
+      fetchDomains();
+      setSelectedDomains(new Set());
+    } catch (error) {
+      console.error('Error bulk approving:', error);
+      alert('Error approving offerings');
+    }
+  };
+
+  const handleBulkReject = async () => {
+    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
+
+    if (selectedDomainsList.length === 0) {
+      alert('Please select at least one domain');
+      return;
+    }
+
+    const reason = prompt('Enter rejection reason for all pending offerings:');
+    if (!reason) return;
+
+    try {
+      const updates = [];
+      selectedDomainsList.forEach(domain => {
+        domain.publisherOfferings.forEach((offering, index) => {
+          if (offering.adminApproved === null || offering.adminApproved === undefined) {
+            updates.push({
+              domainId: domain._id,
+              offeringIndex: index,
+              reason: reason
+            });
+          }
+        });
+      });
+
+      if (updates.length === 0) {
+        alert('No pending offerings found in selected domains');
+        return;
+      }
+
+      const promises = updates.map(update =>
+        fetch('/api/domains/reject-offering', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(update)
+        })
+      );
+
+      await Promise.all(promises);
+      alert(`Successfully rejected ${updates.length} pending offering(s)`);
+      fetchDomains();
+      setSelectedDomains(new Set());
+    } catch (error) {
+      console.error('Error bulk rejecting:', error);
+      alert('Error rejecting offerings');
+    }
+  };
+
+  const exportToCSV = () => {
+    const filteredDomains = getFilteredDomains();
+    const domainsToExport = filteredDomains.filter(d => selectedDomains.has(d._id));
+
+    if (domainsToExport.length === 0) {
+      alert('Please select at least one domain to export');
+      return;
+    }
+
+    // Create CSV content
+    const headers = ['Domain Name', 'DR', 'DA', 'Spam Score', 'Traffic'];
+    const rows = domainsToExport.map(domain => [
+      domain.domainName,
+      domain.domainRating || '',
+      domain.domainAuthority || '',
+      domain.spamScore || '',
+      domain.organicTraffic || ''
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    // Create download link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `domains_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = e.clipboardData.getData('text');
+    setPastedData(text);
+
+    // Parse the pasted data
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return;
+
+    const rows = lines.map(line => {
+      const values = line.split('\t').map(v => v.trim());
+      return {
+        domainName: values[0] || '',
+        dr: values[1] || '',
+        da: values[2] || '',
+        spamScore: values[3] || '',
+        traffic: values[4] || ''
+      };
+    });
+
+    setParsedRows(rows);
+  };
+
+  const handleBulkUpdate = async () => {
+    if (parsedRows.length === 0) return;
+
+    setUploadingCSV(true);
+
+    try {
+      const updates = parsedRows.map(row => {
+        const update: any = { domainName: row.domainName };
+
+        if (row.dr && row.dr.trim() !== '' && !isNaN(Number(row.dr))) {
+          update.domainRating = Number(row.dr);
+        }
+        if (row.da && row.da.trim() !== '' && !isNaN(Number(row.da))) {
+          update.domainAuthority = Number(row.da);
+        }
+        if (row.traffic && row.traffic.trim() !== '' && !isNaN(Number(row.traffic))) {
+          update.organicTraffic = Number(row.traffic);
+        }
+        if (row.spamScore && row.spamScore.trim() !== '' && !isNaN(Number(row.spamScore))) {
+          update.spamScore = Number(row.spamScore);
+        }
+
+        return update;
+      }).filter(update => Object.keys(update).length > 1); // Only include updates with data
+
+      if (updates.length === 0) {
+        setUploadResult({
+          success: false,
+          updatedCount: 0,
+          errors: ['No valid updates found. Make sure you have domain names and at least one metric with values.'],
+          totalProcessed: 0
+        });
+        setUploadingCSV(false);
+        setShowImportModal(false);
+        return;
+      }
+
+      const response = await fetch('/api/domains/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setUploadResult({
+          success: true,
+          updatedCount: result.updatedCount || 0,
+          errors: result.errors,
+          totalProcessed: updates.length
+        });
+        fetchDomains();
+      } else {
+        setUploadResult({
+          success: false,
+          updatedCount: 0,
+          errors: [result.error || 'Failed to update domains'],
+          totalProcessed: updates.length
+        });
+      }
+
+      setShowImportModal(false);
+      setPastedData('');
+      setParsedRows([]);
+    } catch (error) {
+      console.error('Error processing data:', error);
+      setUploadResult({
+        success: false,
+        updatedCount: 0,
+        errors: ['Error processing data'],
+        totalProcessed: 0
+      });
+      setShowImportModal(false);
+    } finally {
+      setUploadingCSV(false);
+    }
+  };
+
+  const handleCSVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingCSV(true);
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+
+      // Find column indices - flexible matching
+      const domainNameIdx = headers.findIndex(h => h.toLowerCase().includes('domain'));
+      const drIdx = headers.findIndex(h => h.toUpperCase() === 'DR');
+      const daIdx = headers.findIndex(h => h.toUpperCase() === 'DA');
+      const trafficIdx = headers.findIndex(h => h.toLowerCase().includes('traffic'));
+      const spamScoreIdx = headers.findIndex(h => h.toLowerCase().includes('spam'));
+
+      if (domainNameIdx === -1) {
+        setUploadResult({
+          success: false,
+          updatedCount: 0,
+          errors: ['CSV must contain a column with "Domain" in the name (e.g., "Domain Name")'],
+          totalProcessed: 0
+        });
+        setUploadingCSV(false);
+        return;
+      }
+
+      const updates = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+
+        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+        const domainName = values[domainNameIdx];
+
+        if (!domainName) continue;
+
+        const update: any = { domainName };
+
+        // Only include non-empty values and valid numbers
+        if (drIdx !== -1 && values[drIdx] && values[drIdx] !== 'N/A' && values[drIdx].trim() !== '') {
+          const val = Number(values[drIdx]);
+          if (!isNaN(val)) update.domainRating = val;
+        }
+        if (daIdx !== -1 && values[daIdx] && values[daIdx] !== 'N/A' && values[daIdx].trim() !== '') {
+          const val = Number(values[daIdx]);
+          if (!isNaN(val)) update.domainAuthority = val;
+        }
+        if (trafficIdx !== -1 && values[trafficIdx] && values[trafficIdx] !== 'N/A' && values[trafficIdx].trim() !== '') {
+          const val = Number(values[trafficIdx]);
+          if (!isNaN(val)) update.organicTraffic = val;
+        }
+        if (spamScoreIdx !== -1 && values[spamScoreIdx] && values[spamScoreIdx] !== 'N/A' && values[spamScoreIdx].trim() !== '') {
+          const val = Number(values[spamScoreIdx]);
+          if (!isNaN(val)) update.spamScore = val;
+        }
+
+        // Only add if there are fields to update beyond domain name
+        if (Object.keys(update).length > 1) {
+          updates.push(update);
+        }
+      }
+
+      if (updates.length === 0) {
+        setUploadResult({
+          success: false,
+          updatedCount: 0,
+          errors: ['No valid updates found in CSV. Make sure you have Domain Name column and at least one metric (DR, DA, Traffic, Spam Score) with values.'],
+          totalProcessed: 0
+        });
+        setUploadingCSV(false);
+        return;
+      }
+
+      // Send bulk update to API
+      const response = await fetch('/api/domains/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setUploadResult({
+          success: true,
+          updatedCount: result.updatedCount || 0,
+          errors: result.errors,
+          totalProcessed: updates.length
+        });
+        fetchDomains();
+      } else {
+        setUploadResult({
+          success: false,
+          updatedCount: 0,
+          errors: [result.error || 'Failed to update domains'],
+          totalProcessed: updates.length
+        });
+      }
+    } catch (error) {
+      console.error('Error processing CSV:', error);
+      setUploadResult({
+        success: false,
+        updatedCount: 0,
+        errors: ['Error processing CSV file'],
+        totalProcessed: 0
+      });
+    } finally {
+      setUploadingCSV(false);
+      // Reset file input
+      event.target.value = '';
+    }
+  };
+
   return (
     <>
       {viewingOffering && (
@@ -191,6 +592,241 @@ export default function DomainsPage() {
           onApprove={handleApproveOffering}
           onReject={handleRejectOffering}
         />
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Bulk Update Domains</h3>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setPastedData('');
+                  setParsedRows([]);
+                  setImportType('file');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Import Type Selector */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setImportType('file')}
+                  className={`px-4 py-2 rounded-lg font-medium transition ${
+                    importType === 'file'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  Upload CSV File
+                </button>
+                <button
+                  onClick={() => setImportType('paste')}
+                  className={`px-4 py-2 rounded-lg font-medium transition ${
+                    importType === 'paste'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  Paste from Spreadsheet
+                </button>
+              </div>
+
+              {importType === 'file' ? (
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                  <Download className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-4">Upload a CSV file with domain data</p>
+                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition cursor-pointer">
+                    <Download className="w-4 h-4" />
+                    Choose File
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => {
+                        handleCSVUpload(e);
+                        setShowImportModal(false);
+                      }}
+                      disabled={uploadingCSV}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-blue-900 text-sm font-medium mb-2">How to use:</p>
+                    <ol className="text-blue-700 text-sm space-y-1 list-decimal list-inside">
+                      <li>Copy data from Google Sheets or Excel in this order: <strong>Domain Name, DR, DA, Spam Score, Traffic</strong></li>
+                      <li>Click in the text area below and paste (Ctrl+V / Cmd+V)</li>
+                      <li>Review the parsed data in the table</li>
+                      <li>Click "Update Domains" to apply changes</li>
+                    </ol>
+                  </div>
+
+                  <textarea
+                    placeholder="Click here and paste your data from Google Sheets (Ctrl+V / Cmd+V)..."
+                    onPaste={handlePaste}
+                    value={pastedData}
+                    onChange={(e) => setPastedData(e.target.value)}
+                    className="w-full h-32 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm font-mono"
+                  />
+
+                  {parsedRows.length > 0 && (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto max-h-96">
+                        <table className="w-full">
+                          <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Domain Name</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">DR</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">DA</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Spam Score</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Traffic</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {parsedRows.map((row, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-4 py-2 text-sm text-gray-900">{row.domainName}</td>
+                                <td className="px-4 py-2 text-sm text-gray-600">{row.dr}</td>
+                                <td className="px-4 py-2 text-sm text-gray-600">{row.da}</td>
+                                <td className="px-4 py-2 text-sm text-gray-600">{row.spamScore}</td>
+                                <td className="px-4 py-2 text-sm text-gray-600">{row.traffic}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="bg-gray-50 px-4 py-2 border-t border-gray-200">
+                        <p className="text-sm text-gray-600">{parsedRows.length} row(s) ready to update</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {importType === 'paste' && parsedRows.length > 0 && (
+              <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    setShowImportModal(false);
+                    setPastedData('');
+                    setParsedRows([]);
+                  }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                  disabled={uploadingCSV}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkUpdate}
+                  disabled={uploadingCSV}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+                >
+                  {uploadingCSV ? 'Updating...' : 'Update Domains'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Upload Result Modal */}
+      {uploadResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {uploadResult.success ? (
+                  <CheckCircle className="w-6 h-6 text-green-600" />
+                ) : (
+                  <XCircle className="w-6 h-6 text-red-600" />
+                )}
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {uploadResult.success ? 'Import Successful' : 'Import Failed'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setUploadResult(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="text-sm text-blue-600 mb-1">Total Processed</div>
+                  <div className="text-2xl font-bold text-blue-900">{uploadResult.totalProcessed}</div>
+                </div>
+                <div className={`rounded-lg p-4 ${uploadResult.success ? 'bg-green-50' : 'bg-red-50'}`}>
+                  <div className={`text-sm mb-1 ${uploadResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                    Updated Successfully
+                  </div>
+                  <div className={`text-2xl font-bold ${uploadResult.success ? 'text-green-900' : 'text-red-900'}`}>
+                    {uploadResult.updatedCount}
+                  </div>
+                </div>
+              </div>
+
+              {/* Success Message */}
+              {uploadResult.success && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-green-900 font-medium">
+                        Successfully updated {uploadResult.updatedCount} domain{uploadResult.updatedCount !== 1 ? 's' : ''}
+                      </p>
+                      <p className="text-green-700 text-sm mt-1">
+                        SEO metrics have been updated for the matched domains.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Errors */}
+              {uploadResult.errors && uploadResult.errors.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-yellow-900 font-medium mb-2">
+                        {uploadResult.errors.length} Warning{uploadResult.errors.length !== 1 ? 's' : ''}
+                      </p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {uploadResult.errors.map((error, idx) => (
+                          <p key={idx} className="text-yellow-700 text-sm">
+                            • {error}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-end border-t border-gray-200">
+              <button
+                onClick={() => setUploadResult(null)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Old modal code replaced by OfferingModal component */}
@@ -207,44 +843,67 @@ export default function DomainsPage() {
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow-sm p-4 border-2 border-blue-200">
+      {/* Stats Cards - Now Clickable Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <button
+          onClick={() => setFilter('all')}
+          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            filter === 'all' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-blue-200'
+          }`}
+        >
           <div className="text-sm text-gray-600 mb-1">Total Domains</div>
           <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+        </button>
+        <button
+          onClick={() => setFilter('pending')}
+          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            filter === 'pending' ? 'border-orange-500 ring-2 ring-orange-200' : 'border-gray-200'
+          }`}
+        >
           <div className="text-sm text-gray-600 mb-1">Pending Approval</div>
           <div className="text-2xl font-bold text-orange-600">{stats.pending}</div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+        </button>
+        <button
+          onClick={() => setFilter('verified')}
+          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            filter === 'verified' ? 'border-green-500 ring-2 ring-green-200' : 'border-gray-200'
+          }`}
+        >
           <div className="text-sm text-gray-600 mb-1">Verified</div>
           <div className="text-2xl font-bold text-green-600">{stats.verified}</div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
+        </button>
+        <button
+          onClick={() => setFilter('rejected')}
+          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            filter === 'rejected' ? 'border-red-500 ring-2 ring-red-200' : 'border-gray-200'
+          }`}
+        >
           <div className="text-sm text-gray-600 mb-1">Rejected</div>
           <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
-        </div>
+        </button>
+        <button
+          onClick={() => setFilter('with_owner')}
+          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            filter === 'with_owner' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
+          }`}
+        >
+          <div className="text-sm text-gray-600 mb-1">With Owner</div>
+          <div className="text-2xl font-bold text-blue-600">{stats.domainsWithOwner}</div>
+        </button>
+        <button
+          onClick={() => setFilter('reseller_only')}
+          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            filter === 'reseller_only' ? 'border-purple-500 ring-2 ring-purple-200' : 'border-gray-200'
+          }`}
+        >
+          <div className="text-sm text-gray-600 mb-1">Reseller Only</div>
+          <div className="text-2xl font-bold text-purple-600">{stats.domainsWithReseller}</div>
+        </button>
       </div>
 
-      {/* Filters and Search */}
+      {/* Search on left, bulk operations on right */}
       <div className="mb-6 flex items-center justify-between gap-4">
-        <div className="flex gap-2">
-          {['all', 'pending', 'verified', 'rejected'].map((status) => (
-            <button
-              key={`filter-${status}`}
-              onClick={() => setFilter(status)}
-              className={`px-4 py-2 rounded-lg font-medium transition text-sm ${
-                filter === status
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              {status.charAt(0).toUpperCase() + status.slice(1)}
-            </button>
-          ))}
-        </div>
-
+        {/* Left side: Search only */}
         <div className="relative w-80">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -255,30 +914,125 @@ export default function DomainsPage() {
             className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
           />
         </div>
+
+        {/* Right side: All buttons */}
+        <div className="flex items-center gap-2">
+          {selectedDomains.size > 0 && (
+            <>
+              <span className="text-sm text-gray-600">
+                {selectedDomains.size} selected
+              </span>
+              <button
+                onClick={handleBulkApprove}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+              >
+                <CheckCircle className="w-4 h-4" />
+                Approve All Pending
+              </button>
+              <button
+                onClick={handleBulkReject}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+              >
+                <XCircle className="w-4 h-4" />
+                Reject All Pending
+              </button>
+              <button
+                onClick={exportToCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+              >
+                <Download className="w-4 h-4" />
+                Export CSV
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => {
+              setShowImportModal(true);
+              setImportType('paste');
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+          >
+            <Download className="w-4 h-4" />
+            Bulk Update
+          </button>
+        </div>
       </div>
 
-      {/* Domains List */}
-      <div className="space-y-4">
+      {/* Domains Table */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-500">
+          <div className="p-12 text-center text-gray-500">
             Loading...
           </div>
-        ) : domains.filter(domain =>
-            domain.domainName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            domain.domain_categories?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-          ).length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center text-gray-500">
+        ) : getFilteredDomains().length === 0 ? (
+          <div className="p-12 text-center text-gray-500">
             No domains found
           </div>
         ) : (
-          domains.filter(domain =>
-            domain.domainName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            domain.domain_categories?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-          ).map((domain) => (
-            <div key={domain._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <>
+            {/* Table Header */}
+            <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
+              <div className="flex items-center">
+                {/* Select All Checkbox */}
+                <div className="flex-shrink-0 mr-3">
+                  <input
+                    type="checkbox"
+                    checked={getFilteredDomains().length > 0 && selectedDomains.size === getFilteredDomains().length}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                  />
+                </div>
+
+                {/* Domain Name */}
+                <div className="w-64 flex-shrink-0">
+                  <span className="text-xs font-semibold text-gray-900 uppercase">Domain Name</span>
+                </div>
+
+                {/* Stats - Centered */}
+                <div className="flex-1 flex items-center justify-center gap-8">
+                  <div className="text-center w-16">
+                    <span className="text-xs font-semibold text-gray-900 uppercase">DR</span>
+                  </div>
+                  <div className="text-center w-16">
+                    <span className="text-xs font-semibold text-gray-900 uppercase">DA</span>
+                  </div>
+                  <div className="text-center w-20">
+                    <span className="text-xs font-semibold text-gray-900 uppercase">Traffic</span>
+                  </div>
+                  <div className="text-center w-16">
+                    <span className="text-xs font-semibold text-gray-900 uppercase">SS</span>
+                  </div>
+                </div>
+
+                {/* Publishers */}
+                <div className="flex-shrink-0 text-center" style={{ minWidth: '120px' }}>
+                  <span className="text-xs font-semibold text-gray-900 uppercase">Publishers</span>
+                </div>
+
+                {/* Actions */}
+                <div className="flex-shrink-0 text-center" style={{ minWidth: '80px' }}>
+                  <span className="text-xs font-semibold text-gray-900 uppercase">Actions</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Table Body */}
+            <div className="divide-y divide-gray-200">
+              {getFilteredDomains().map((domain) => (
+            <div key={domain._id}>
               {/* Domain Row */}
-              <div className="p-4">
+              <div className="p-4 hover:bg-gray-50 transition">
                 <div className="flex items-center">
+                  {/* Checkbox */}
+                  <div className="flex-shrink-0 mr-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedDomains.has(domain._id)}
+                      onChange={() => toggleSelectDomain(domain._id)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                    />
+                  </div>
+
                   {/* Domain Name and Category */}
                   <div className="w-64 flex-shrink-0">
                     <h3 className="text-base font-semibold text-gray-900">{domain.domainName}</h3>
@@ -290,26 +1044,22 @@ export default function DomainsPage() {
                   {/* Stats - Centered */}
                   <div className="flex-1 flex items-center justify-center gap-8">
                     {/* DR */}
-                    <div className="text-center">
-                      <div className="text-xs text-gray-500 mb-0.5">DR</div>
+                    <div className="text-center w-16">
                       <div className="text-base font-bold text-blue-600">{domain.domainRating || 'N/A'}</div>
                     </div>
 
                     {/* DA */}
-                    <div className="text-center">
-                      <div className="text-xs text-gray-500 mb-0.5">DA</div>
+                    <div className="text-center w-16">
                       <div className="text-base font-bold text-blue-600">{domain.domainAuthority || 'N/A'}</div>
                     </div>
 
                     {/* Traffic */}
-                    <div className="text-center">
-                      <div className="text-xs text-gray-500 mb-0.5">Traffic</div>
+                    <div className="text-center w-20">
                       <div className="text-base font-bold text-green-600">{domain.organicTraffic || 'N/A'}</div>
                     </div>
 
                     {/* SS */}
-                    <div className="text-center">
-                      <div className="text-xs text-gray-500 mb-0.5">SS</div>
+                    <div className="text-center w-16">
                       <div className="text-base font-bold text-gray-900">
                         {domain.spamScore || 'N/A'}
                       </div>
@@ -317,7 +1067,7 @@ export default function DomainsPage() {
                   </div>
 
                   {/* Publisher Buttons - Right Side */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0 justify-center" style={{ minWidth: '120px' }}>
                     {domain.publisherOfferings.map((offering, index) => {
                       const isOwner = offering.domainType === 'owner';
                       const isReseller = offering.domainType === 'reseller';
@@ -363,7 +1113,7 @@ export default function DomainsPage() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0 justify-center" style={{ minWidth: '80px' }}>
                     <button
                       onClick={() => setEditingSEO(editingSEO === domain._id ? null : domain._id)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
@@ -436,7 +1186,9 @@ export default function DomainsPage() {
                 )}
               </div>
             </div>
-          ))
+          ))}
+            </div>
+          </>
         )}
       </div>
 

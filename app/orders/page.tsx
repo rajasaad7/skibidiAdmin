@@ -24,13 +24,27 @@ interface Order {
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  const [serviceTypeFilters, setServiceTypeFilters] = useState<string[]>(['guest_post', 'link_insertion', 'featured_domain']);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [newStatus, setNewStatus] = useState<string>('');
   const [adminRemarks, setAdminRemarks] = useState<string>('');
   const [publishedUrl, setPublishedUrl] = useState<string>('');
   const [refundAmount, setRefundAmount] = useState<string>('');
+
+  const fetchAllOrders = async () => {
+    try {
+      const response = await fetch('/api/orders');
+      const data = await response.json();
+      if (data.success) {
+        setAllOrders(data.orders);
+      }
+    } catch (error) {
+      console.error('Error fetching all orders:', error);
+    }
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -51,8 +65,45 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
+    fetchAllOrders();
+  }, []);
+
+  useEffect(() => {
     fetchOrders();
   }, [filter]);
+
+  const toggleServiceTypeFilter = (type: string) => {
+    setServiceTypeFilters(prev => {
+      if (prev.includes(type)) {
+        return prev.filter(t => t !== type);
+      } else {
+        return [...prev, type];
+      }
+    });
+  };
+
+  const getStatusCount = (status: string) => {
+    let filteredOrders = allOrders;
+
+    // Apply service type filter
+    if (serviceTypeFilters.length > 0) {
+      filteredOrders = filteredOrders.filter(order => serviceTypeFilters.includes(order.serviceType));
+    }
+
+    if (status === 'all') return filteredOrders.length;
+    return filteredOrders.filter(order => order.status === status).length;
+  };
+
+  const getFilteredOrders = () => {
+    let filteredOrders = orders;
+
+    // Apply service type filter
+    if (serviceTypeFilters.length > 0) {
+      filteredOrders = filteredOrders.filter(order => serviceTypeFilters.includes(order.serviceType));
+    }
+
+    return filteredOrders;
+  };
 
   const handleUpdateStatus = async () => {
     if (!editingOrder || !newStatus) return;
@@ -92,6 +143,7 @@ export default function OrdersPage() {
         setPublishedUrl('');
         setRefundAmount('');
         fetchOrders();
+        fetchAllOrders();
         alert('Order status updated successfully!');
       } else {
         alert('Failed to update order status');
@@ -119,29 +171,54 @@ export default function OrdersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
         <h1 className="text-3xl font-bold text-gray-900">Order Management</h1>
-        <button
-          onClick={fetchOrders}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {['guest_post', 'link_insertion', 'featured_domain'].map((type) => (
+            <button
+              key={`service-${type}`}
+              onClick={() => toggleServiceTypeFilter(type)}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                serviceTypeFilters.includes(type)
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              {type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+            </button>
+          ))}
+          <button
+            onClick={() => {
+              fetchOrders();
+              fetchAllOrders();
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      <div className="mb-6 flex gap-2 flex-wrap">
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
         {['all', 'paid', 'in_progress', 'submitted', 'completed', 'cancelled', 'refunded'].map((status) => (
           <button
             key={`filter-${status}`}
             onClick={() => setFilter(status)}
-            className={`px-4 py-2 rounded-lg font-medium transition ${
+            className={`p-4 rounded-xl font-medium transition border-2 ${
               filter === status
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-lg'
+                : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:shadow-md'
             }`}
           >
-            {status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+            <div className="text-center">
+              <div className={`text-2xl font-bold mb-1 ${filter === status ? 'text-white' : 'text-blue-600'}`}>
+                {getStatusCount(status)}
+              </div>
+              <div className="text-sm">
+                {status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+              </div>
+            </div>
           </button>
         ))}
       </div>
@@ -167,14 +244,14 @@ export default function OrdersPage() {
                     Loading...
                   </td>
                 </tr>
-              ) : orders.length === 0 ? (
+              ) : getFilteredOrders().length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                     No orders found
                   </td>
                 </tr>
               ) : (
-                orders.map((order) => (
+                getFilteredOrders().map((order) => (
                   <tr key={order._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
                       {order.orderNumber}

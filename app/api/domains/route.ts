@@ -10,8 +10,17 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get stats using RPC (much faster for large datasets)
-    const { data: statsData } = await supabase.rpc('get_domain_stats');
-    const stats = statsData || { total: 0, pending: 0, verified: 0, rejected: 0 };
+    const { data: statsData, error: statsError } = await supabase.rpc('get_domain_stats');
+    console.log('RPC stats response:', statsData);
+    console.log('RPC stats error:', statsError);
+    const stats = statsData || {
+      total: 0,
+      pending: 0,
+      verified: 0,
+      rejected: 0,
+      domainsWithOwner: 0,
+      domainsWithReseller: 0
+    };
 
     // First, get ALL domains to filter on the server side
     const { data: allDomains, error } = await supabase
