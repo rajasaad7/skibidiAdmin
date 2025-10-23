@@ -244,7 +244,7 @@ export default function DomainsPage() {
     }
 
     try {
-      const updates = [];
+      const updates: { domainId: string; offeringIndex: number }[] = [];
       selectedDomainsList.forEach(domain => {
         domain.publisherOfferings.forEach((offering, index) => {
           if (offering.adminApproved === null || offering.adminApproved === undefined) {
@@ -291,7 +291,7 @@ export default function DomainsPage() {
     if (!reason) return;
 
     try {
-      const updates = [];
+      const updates: { domainId: string; offeringIndex: number; reason: string }[] = [];
       selectedDomainsList.forEach(domain => {
         domain.publisherOfferings.forEach((offering, index) => {
           if (offering.adminApproved === null || offering.adminApproved === undefined) {
