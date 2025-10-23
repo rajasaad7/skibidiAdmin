@@ -18,7 +18,7 @@ export default async function DomainsLayout({
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar adminEmail={adminEmail} />
-      <main className="flex-1 p-8 ml-64 overflow-auto">
+      <main className="flex-1 p-8 md:ml-64 overflow-auto">
         {children}
       </main>
     </div>

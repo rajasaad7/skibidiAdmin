@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { checkAuth, getAdminEmail } from '@/lib/auth';
 import Sidebar from '@/components/Sidebar';
 
-export default async function UsersLayout({
+export default async function IndexerLayout({
   children,
 }: {
   children: React.ReactNode;

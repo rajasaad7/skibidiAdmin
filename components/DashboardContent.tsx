@@ -141,10 +141,10 @@ export default function DashboardContent({
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-lg md:text-2xl font-semibold text-gray-900">Dashboard</h1>
+          <p className="hidden md:block text-sm text-gray-500 mt-1">
             {view === 'monitoring'
               ? 'Overview of link monitoring and keyword tracking'
               : 'Overview of your marketplace metrics'}

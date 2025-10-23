@@ -171,14 +171,14 @@ export default function OrdersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-        <h1 className="text-3xl font-bold text-gray-900">Order Management</h1>
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
+        <h1 className="text-lg md:text-3xl font-bold text-gray-900">Order Management</h1>
+        <div className="flex items-center gap-2 flex-wrap">
           {['guest_post', 'link_insertion', 'featured_domain'].map((type) => (
             <button
               key={`service-${type}`}
               onClick={() => toggleServiceTypeFilter(type)}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
+              className={`px-2 py-1 md:px-4 md:py-2 rounded-lg text-xs md:text-base font-medium transition ${
                 serviceTypeFilters.includes(type)
                   ? 'bg-purple-600 text-white'
                   : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
@@ -192,7 +192,7 @@ export default function OrdersPage() {
               fetchOrders();
               fetchAllOrders();
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            className="flex items-center gap-2 px-3 py-1 md:px-4 md:py-2 text-xs md:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
           >
             <RefreshCw className="w-4 h-4" />
             Refresh

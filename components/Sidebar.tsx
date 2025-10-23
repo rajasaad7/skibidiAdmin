@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -40,6 +40,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
     { href: '/domains', icon: Globe, label: 'Domains' },
     { href: '/orders', icon: ShoppingCart, label: 'Orders' },
     { href: '/payouts', icon: DollarSign, label: 'Payouts' },
+    { href: '/indexer', icon: Zap, label: 'Indexer' },
   ];
 
   return (

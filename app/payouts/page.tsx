@@ -99,8 +99,8 @@ export default function PayoutsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Publisher Payouts</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+        <h1 className="text-lg md:text-3xl font-bold text-gray-900">Publisher Payouts</h1>
         <button
           onClick={fetchPayouts}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
