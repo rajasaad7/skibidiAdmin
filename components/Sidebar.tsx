@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -13,9 +13,11 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
   const pathname = usePathname();
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
     setIsNavigating(false);
+    setIsCollapsed(true); // Close sidebar on mobile after navigation
   }, [pathname]);
 
   const handleNavigation = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -52,7 +54,25 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
         </div>
       )}
 
-    <aside className="w-64 bg-white border-r border-gray-100 h-screen flex flex-col fixed left-0 top-0">
+      {/* Mobile Overlay */}
+      {!isCollapsed && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          onClick={() => setIsCollapsed(true)}
+        />
+      )}
+
+      {/* Toggle Button */}
+      <button
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className="fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition lg:hidden"
+      >
+        {isCollapsed ? <Menu className="w-5 h-5 text-gray-700" /> : <X className="w-5 h-5 text-gray-700" />}
+      </button>
+
+    <aside className={`w-64 bg-white border-r border-gray-100 h-screen flex flex-col fixed left-0 top-0 z-40 transition-transform duration-300 ${
+      isCollapsed ? '-translate-x-full lg:translate-x-0' : 'translate-x-0'
+    }`}>
       <div className="px-3 py-4 border-b border-gray-100">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">

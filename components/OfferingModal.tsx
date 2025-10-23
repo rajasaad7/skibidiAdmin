@@ -32,6 +32,7 @@ interface OfferingModalProps {
   domain: {
     _id: string;
     domainName: string;
+    verificationStatus?: string;
   };
   offering: PublisherOffering;
   index: number;
@@ -134,7 +135,7 @@ export default function OfferingModal({
           {/* Status Section */}
           <div>
             <h4 className="text-sm font-semibold text-gray-900 mb-2">Status</h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="p-2.5 bg-gray-50 rounded-lg">
                 <label className="text-xs font-medium text-gray-700 mb-2 block">Admin Approval</label>
                 {editing ? (
@@ -171,6 +172,18 @@ export default function OfferingModal({
                     {edited.isActive ? 'Active' : 'Inactive'}
                   </span>
                 )}
+              </div>
+              <div className="p-2.5 bg-gray-50 rounded-lg">
+                <label className="text-xs font-medium text-gray-700 mb-2 block">Verification Status</label>
+                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                  domain.verificationStatus === 'verified' ? 'bg-green-100 text-green-800' :
+                  domain.verificationStatus === 'pending' ? 'bg-orange-100 text-orange-800' :
+                  'bg-red-100 text-red-800'
+                }`}>
+                  {domain.verificationStatus === 'verified' ? 'Verified' :
+                   domain.verificationStatus === 'pending' ? 'Pending' :
+                   domain.verificationStatus || 'Unknown'}
+                </span>
               </div>
             </div>
 
