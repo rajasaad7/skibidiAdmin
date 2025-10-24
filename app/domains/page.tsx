@@ -68,6 +68,7 @@ export default function DomainsPage() {
   const [importType, setImportType] = useState<'file' | 'paste'>('file');
   const [pastedData, setPastedData] = useState<string>('');
   const [parsedRows, setParsedRows] = useState<{ domainName: string; dr: string; da: string; traffic: string; spamScore: string }[]>([]);
+  const [hoveredOffering, setHoveredOffering] = useState<{ domainId: string; index: number } | null>(null);
 
   const fetchDomains = async () => {
     setLoading(true);
@@ -78,6 +79,11 @@ export default function DomainsPage() {
         params.append('status', filter);
       }
       params.append('page', page.toString());
+
+      // Add search query to params
+      if (searchQuery.trim()) {
+        params.append('search', searchQuery.trim());
+      }
 
       const url = `/api/domains?${params.toString()}`;
       const response = await fetch(url);
@@ -190,10 +196,7 @@ export default function DomainsPage() {
   };
 
   const getFilteredDomains = () => {
-    let filtered = domains.filter(domain =>
-      domain.domainName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      domain.domain_categories?.name?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    let filtered = domains;
 
     // Apply owner/reseller filters client-side
     if (filter === 'with_owner') {
@@ -908,9 +911,15 @@ export default function DomainsPage() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search domains..."
+            placeholder="Search domains (press Enter)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setPage(1); // Reset to page 1 on search
+                fetchDomains();
+              }
+            }}
             className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
           />
         </div>
@@ -959,7 +968,7 @@ export default function DomainsPage() {
       </div>
 
       {/* Domains Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-visible">
         {loading ? (
           <div className="p-12 text-center text-gray-500">
             Loading...
@@ -1017,7 +1026,7 @@ export default function DomainsPage() {
             </div>
 
             {/* Table Body */}
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-gray-200 overflow-visible">
               {getFilteredDomains().map((domain) => (
             <div key={domain._id}>
               {/* Domain Row */}
@@ -1067,7 +1076,7 @@ export default function DomainsPage() {
                   </div>
 
                   {/* Publisher Buttons - Right Side */}
-                  <div className="flex items-center gap-2 flex-shrink-0 justify-center" style={{ minWidth: '120px' }}>
+                  <div className="flex items-center gap-2 flex-shrink-0 justify-center overflow-visible" style={{ minWidth: '120px' }}>
                     {domain.publisherOfferings.map((offering, index) => {
                       const isOwner = offering.domainType === 'owner';
                       const isReseller = offering.domainType === 'reseller';
@@ -1099,15 +1108,60 @@ export default function DomainsPage() {
                       const prefix = isOwner ? 'O' : isReseller ? 'R' : 'P';
                       const number = isOwner ? ownerCount : isReseller ? resellerCount : index + 1;
 
+                      const isHovered = hoveredOffering?.domainId === domain._id && hoveredOffering?.index === index;
+
                       return (
-                        <button
-                          key={`pub-${index}`}
-                          onClick={() => setViewingOffering({ domain, offering, index })}
-                          className={`flex items-center gap-1 px-2.5 py-1.5 ${statusColor} text-white text-xs font-medium rounded-lg transition`}
-                        >
-                          <Icon className="w-3.5 h-3.5" />
-                          {prefix}{number}
-                        </button>
+                        <div key={`pub-${index}`} className="relative">
+                          <button
+                            onClick={() => setViewingOffering({ domain, offering, index })}
+                            onMouseEnter={() => setHoveredOffering({ domainId: domain._id, index })}
+                            onMouseLeave={() => setHoveredOffering(null)}
+                            className={`flex items-center gap-1 px-2.5 py-1.5 ${statusColor} text-white text-xs font-medium rounded-lg transition`}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                            {prefix}{number}
+                          </button>
+
+                          {/* Tooltip */}
+                          {isHovered && (
+                            <div className="absolute z-50 bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-lg shadow-lg p-3 w-64 pointer-events-none">
+                              <div className="space-y-1.5">
+                                <div className="font-semibold text-sm border-b border-gray-700 pb-1.5 mb-1.5">
+                                  {offering.domainType === 'owner' ? 'Owner' : offering.domainType === 'reseller' ? 'Reseller' : 'Publisher'}
+                                </div>
+                                <div>
+                                  <span className="text-gray-400">Name:</span> {offering.publisherName || 'N/A'}
+                                </div>
+                                <div>
+                                  <span className="text-gray-400">Email:</span> {offering.publisherEmail || 'N/A'}
+                                </div>
+                                {offering.guestPostEnabled && (
+                                  <div>
+                                    <span className="text-gray-400">Guest Post:</span> ${offering.guestPostPrice || 'N/A'}
+                                  </div>
+                                )}
+                                {offering.linkInsertionEnabled && (
+                                  <div>
+                                    <span className="text-gray-400">Link Insertion:</span> ${offering.linkInsertionPrice || 'N/A'}
+                                  </div>
+                                )}
+                                {offering.contentWritingEnabled && (
+                                  <div>
+                                    <span className="text-gray-400">Content Writing:</span> ${offering.contentWritingPrice || 'N/A'}
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="text-gray-400">Status:</span>{' '}
+                                  <span className={offering.adminApproved === true ? 'text-green-400' : offering.adminApproved === false ? 'text-red-400' : 'text-yellow-400'}>
+                                    {offering.adminApproved === true ? 'Approved' : offering.adminApproved === false ? 'Rejected' : 'Pending'}
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Arrow */}
+                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>

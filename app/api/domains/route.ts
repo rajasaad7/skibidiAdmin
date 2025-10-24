@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
+  const search = searchParams.get('search');
   const page = parseInt(searchParams.get('page') || '1');
   const limit = 50;
   const offset = (page - 1) * limit;
@@ -22,8 +23,8 @@ export async function GET(request: NextRequest) {
       domainsWithReseller: 0
     };
 
-    // First, get ALL domains to filter on the server side
-    const { data: allDomains, error } = await supabase
+    // Build query
+    let query = supabase
       .from('domains')
       .select(`
         _id,
@@ -40,8 +41,16 @@ export async function GET(request: NextRequest) {
         isActive,
         publisherOfferings,
         domain_categories(name)
-      `)
-      .order('createdAt', { ascending: false });
+      `);
+
+    // Apply search filter if provided
+    if (search && search.trim()) {
+      query = query.ilike('domainName', `%${search.trim()}%`);
+    }
+
+    query = query.order('createdAt', { ascending: false });
+
+    const { data: allDomains, error } = await query;
 
     if (error) throw error;
 
