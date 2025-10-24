@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X } from 'lucide-react';
+import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit } from 'lucide-react';
 import OfferingModal from '@/components/OfferingModal';
+import DomainEditModal from '@/components/DomainEditModal';
 
 interface PublisherOffering {
   isActive?: boolean;
@@ -32,16 +33,36 @@ interface PublisherOffering {
 interface Domain {
   _id: string;
   domainName: string;
-  verificationStatus: string;
-  guestPostPrice: number;
+  url: string;
+  userId: string;
+  categoryId: string | null;
+  description: string | null;
+  language: string;
+  country: string;
   domainRating: number;
   domainAuthority: number;
-  spamScore?: number;
-  organicTraffic?: number;
-  categoryId: string;
-  createdAt: string;
-  userId: string;
+  pageAuthority: number;
+  trustFlow: number;
+  citationFlow: number;
+  organicTraffic: number;
+  referringDomains: number;
+  spamScore: number;
+  guestPostPrice: number | null;
+  linkInsertionPrice: number | null;
+  contentWritingIncluded: boolean;
+  contentWritingPrice: number | null;
+  minWordCount: number;
+  maxWordCount: number;
+  turnaroundTimeDays: number;
+  contentRequirements: string;
+  prohibitedNiches: string[] | null;
+  allowedLinkTypes: string[] | null;
+  maxOutboundLinks: number;
+  verificationStatus: string;
   isActive: boolean;
+  isFeatured: boolean;
+  domainType: string;
+  createdAt: string;
   publisherOfferings: PublisherOffering[];
   totalOfferings: number;
   pendingOfferings: number;
@@ -69,6 +90,8 @@ export default function DomainsPage() {
   const [pastedData, setPastedData] = useState<string>('');
   const [parsedRows, setParsedRows] = useState<{ domainName: string; dr: string; da: string; traffic: string; spamScore: string }[]>([]);
   const [hoveredOffering, setHoveredOffering] = useState<{ domainId: string; index: number } | null>(null);
+  const [editingDomain, setEditingDomain] = useState<Domain | null>(null);
+  const [publisherPages, setPublisherPages] = useState<Record<string, number>>({});
 
   const fetchDomains = async () => {
     setLoading(true);
@@ -177,6 +200,28 @@ export default function DomainsPage() {
       }
     } catch (error) {
       console.error('Error deleting domain:', error);
+    }
+  };
+
+  const handleSaveDomain = async (updatedDomain: Partial<Domain>) => {
+    if (!editingDomain) return;
+
+    try {
+      const response = await fetch('/api/domains/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingDomain._id, ...updatedDomain })
+      });
+
+      if (response.ok) {
+        fetchDomains();
+        setEditingDomain(null);
+      } else {
+        throw new Error('Failed to update domain');
+      }
+    } catch (error) {
+      console.error('Error updating domain:', error);
+      throw error;
     }
   };
 
@@ -597,6 +642,14 @@ export default function DomainsPage() {
         />
       )}
 
+      {editingDomain && (
+        <DomainEditModal
+          domain={editingDomain}
+          onClose={() => setEditingDomain(null)}
+          onSave={handleSaveDomain}
+        />
+      )}
+
       {/* Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1014,12 +1067,12 @@ export default function DomainsPage() {
                 </div>
 
                 {/* Publishers */}
-                <div className="flex-shrink-0 text-center" style={{ minWidth: '120px' }}>
+                <div className="flex-shrink-0 text-center" style={{ minWidth: '200px' }}>
                   <span className="text-xs font-semibold text-gray-900 uppercase">Publishers</span>
                 </div>
 
                 {/* Actions */}
-                <div className="flex-shrink-0 text-center" style={{ minWidth: '80px' }}>
+                <div className="flex-shrink-0 text-center" style={{ minWidth: '120px' }}>
                   <span className="text-xs font-semibold text-gray-900 uppercase">Actions</span>
                 </div>
               </div>
@@ -1075,99 +1128,144 @@ export default function DomainsPage() {
                     </div>
                   </div>
 
-                  {/* Publisher Buttons - Right Side */}
-                  <div className="flex items-center gap-2 flex-shrink-0 justify-center overflow-visible" style={{ minWidth: '120px' }}>
-                    {domain.publisherOfferings.map((offering, index) => {
-                      const isOwner = offering.domainType === 'owner';
-                      const isReseller = offering.domainType === 'reseller';
-
-                      // Count owners and resellers separately
-                      const ownerCount = domain.publisherOfferings
-                        .slice(0, index)
-                        .filter(o => o.domainType === 'owner').length + 1;
-                      const resellerCount = domain.publisherOfferings
-                        .slice(0, index)
-                        .filter(o => o.domainType === 'reseller').length + 1;
-
-                      let statusColor = '';
-                      if (isOwner) {
-                        statusColor = offering.adminApproved === true ? 'bg-blue-600 hover:bg-blue-700' :
-                                     offering.adminApproved === false ? 'bg-red-500 hover:bg-red-600' :
-                                     'bg-yellow-500 hover:bg-yellow-600';
-                      } else if (isReseller) {
-                        statusColor = offering.adminApproved === true ? 'bg-purple-600 hover:bg-purple-700' :
-                                     offering.adminApproved === false ? 'bg-red-500 hover:bg-red-600' :
-                                     'bg-yellow-500 hover:bg-yellow-600';
-                      } else {
-                        statusColor = offering.adminApproved === true ? 'bg-green-500 hover:bg-green-600' :
-                                     offering.adminApproved === false ? 'bg-red-500 hover:bg-red-600' :
-                                     'bg-yellow-500 hover:bg-yellow-600';
-                      }
-
-                      const Icon = isOwner ? Crown : isReseller ? Users : User;
-                      const prefix = isOwner ? 'O' : isReseller ? 'R' : 'P';
-                      const number = isOwner ? ownerCount : isReseller ? resellerCount : index + 1;
-
-                      const isHovered = hoveredOffering?.domainId === domain._id && hoveredOffering?.index === index;
+                  {/* Publisher Buttons - Right Side with Carousel */}
+                  <div className="flex items-center gap-1 flex-shrink-0 justify-center" style={{ minWidth: '200px' }}>
+                    {(() => {
+                      const currentPage = publisherPages[domain._id] || 0;
+                      const itemsPerPage = 2;
+                      const totalPages = Math.ceil(domain.publisherOfferings.length / itemsPerPage);
+                      const startIndex = currentPage * itemsPerPage;
+                      const endIndex = startIndex + itemsPerPage;
+                      const visibleOfferings = domain.publisherOfferings.slice(startIndex, endIndex);
 
                       return (
-                        <div key={`pub-${index}`} className="relative">
-                          <button
-                            onClick={() => setViewingOffering({ domain, offering, index })}
-                            onMouseEnter={() => setHoveredOffering({ domainId: domain._id, index })}
-                            onMouseLeave={() => setHoveredOffering(null)}
-                            className={`flex items-center gap-1 px-2.5 py-1.5 ${statusColor} text-white text-xs font-medium rounded-lg transition`}
-                          >
-                            <Icon className="w-3.5 h-3.5" />
-                            {prefix}{number}
-                          </button>
-
-                          {/* Tooltip */}
-                          {isHovered && (
-                            <div className="absolute z-50 bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-lg shadow-lg p-3 w-64 pointer-events-none">
-                              <div className="space-y-1.5">
-                                <div className="font-semibold text-sm border-b border-gray-700 pb-1.5 mb-1.5">
-                                  {offering.domainType === 'owner' ? 'Owner' : offering.domainType === 'reseller' ? 'Reseller' : 'Publisher'}
-                                </div>
-                                <div>
-                                  <span className="text-gray-400">Name:</span> {offering.publisherName || 'N/A'}
-                                </div>
-                                <div>
-                                  <span className="text-gray-400">Email:</span> {offering.publisherEmail || 'N/A'}
-                                </div>
-                                {offering.guestPostEnabled && (
-                                  <div>
-                                    <span className="text-gray-400">Guest Post:</span> ${offering.guestPostPrice || 'N/A'}
-                                  </div>
-                                )}
-                                {offering.linkInsertionEnabled && (
-                                  <div>
-                                    <span className="text-gray-400">Link Insertion:</span> ${offering.linkInsertionPrice || 'N/A'}
-                                  </div>
-                                )}
-                                {offering.contentWritingEnabled && (
-                                  <div>
-                                    <span className="text-gray-400">Content Writing:</span> ${offering.contentWritingPrice || 'N/A'}
-                                  </div>
-                                )}
-                                <div>
-                                  <span className="text-gray-400">Status:</span>{' '}
-                                  <span className={offering.adminApproved === true ? 'text-green-400' : offering.adminApproved === false ? 'text-red-400' : 'text-yellow-400'}>
-                                    {offering.adminApproved === true ? 'Approved' : offering.adminApproved === false ? 'Rejected' : 'Pending'}
-                                  </span>
-                                </div>
-                              </div>
-                              {/* Arrow */}
-                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
-                            </div>
+                        <>
+                          {/* Previous Button */}
+                          {domain.publisherOfferings.length > itemsPerPage && (
+                            <button
+                              onClick={() => setPublisherPages(prev => ({
+                                ...prev,
+                                [domain._id]: currentPage > 0 ? currentPage - 1 : totalPages - 1
+                              }))}
+                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition"
+                              title="Previous"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
                           )}
-                        </div>
+
+                          {/* Publishers */}
+                          <div className="flex items-center gap-2">
+                            {visibleOfferings.map((offering, visibleIndex) => {
+                              const index = startIndex + visibleIndex;
+                              const isOwner = offering.domainType === 'owner';
+                              const isReseller = offering.domainType === 'reseller';
+
+                              // Count owners and resellers separately
+                              const ownerCount = domain.publisherOfferings
+                                .slice(0, index)
+                                .filter(o => o.domainType === 'owner').length + 1;
+                              const resellerCount = domain.publisherOfferings
+                                .slice(0, index)
+                                .filter(o => o.domainType === 'reseller').length + 1;
+
+                              let statusColor = '';
+                              if (isOwner) {
+                                statusColor = offering.adminApproved === true ? 'bg-blue-600 hover:bg-blue-700' :
+                                             offering.adminApproved === false ? 'bg-red-500 hover:bg-red-600' :
+                                             'bg-yellow-500 hover:bg-yellow-600';
+                              } else if (isReseller) {
+                                statusColor = offering.adminApproved === true ? 'bg-purple-600 hover:bg-purple-700' :
+                                             offering.adminApproved === false ? 'bg-red-500 hover:bg-red-600' :
+                                             'bg-yellow-500 hover:bg-yellow-600';
+                              } else {
+                                statusColor = offering.adminApproved === true ? 'bg-green-500 hover:bg-green-600' :
+                                             offering.adminApproved === false ? 'bg-red-500 hover:bg-red-600' :
+                                             'bg-yellow-500 hover:bg-yellow-600';
+                              }
+
+                              const Icon = isOwner ? Crown : isReseller ? Users : User;
+                              const prefix = isOwner ? 'O' : isReseller ? 'R' : 'P';
+                              const number = isOwner ? ownerCount : isReseller ? resellerCount : index + 1;
+
+                              const isHovered = hoveredOffering?.domainId === domain._id && hoveredOffering?.index === index;
+
+                              return (
+                                <div key={`pub-${index}`} className="relative">
+                                  <button
+                                    onClick={() => setViewingOffering({ domain, offering, index })}
+                                    onMouseEnter={() => setHoveredOffering({ domainId: domain._id, index })}
+                                    onMouseLeave={() => setHoveredOffering(null)}
+                                    className={`flex items-center gap-1 px-2.5 py-1.5 ${statusColor} text-white text-xs font-medium rounded-lg transition`}
+                                  >
+                                    <Icon className="w-3.5 h-3.5" />
+                                    {prefix}{number}
+                                  </button>
+
+                                  {/* Tooltip */}
+                                  {isHovered && (
+                                    <div className="absolute z-50 bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-lg shadow-lg p-3 w-64 pointer-events-none">
+                                      <div className="space-y-1.5">
+                                        <div className="font-semibold text-sm border-b border-gray-700 pb-1.5 mb-1.5">
+                                          {offering.domainType === 'owner' ? 'Owner' : offering.domainType === 'reseller' ? 'Reseller' : 'Publisher'}
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-400">Name:</span> {offering.publisherName || 'N/A'}
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-400">Email:</span> {offering.publisherEmail || 'N/A'}
+                                        </div>
+                                        {offering.guestPostEnabled && (
+                                          <div>
+                                            <span className="text-gray-400">Guest Post:</span> ${offering.guestPostPrice || 'N/A'}
+                                          </div>
+                                        )}
+                                        {offering.linkInsertionEnabled && (
+                                          <div>
+                                            <span className="text-gray-400">Link Insertion:</span> ${offering.linkInsertionPrice || 'N/A'}
+                                          </div>
+                                        )}
+                                        {offering.contentWritingEnabled && (
+                                          <div>
+                                            <span className="text-gray-400">Content Writing:</span> ${offering.contentWritingPrice || 'N/A'}
+                                          </div>
+                                        )}
+                                        <div>
+                                          <span className="text-gray-400">Status:</span>{' '}
+                                          <span className={offering.adminApproved === true ? 'text-green-400' : offering.adminApproved === false ? 'text-red-400' : 'text-yellow-400'}>
+                                            {offering.adminApproved === true ? 'Approved' : offering.adminApproved === false ? 'Rejected' : 'Pending'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      {/* Arrow */}
+                                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Next Button */}
+                          {domain.publisherOfferings.length > itemsPerPage && (
+                            <button
+                              onClick={() => setPublisherPages(prev => ({
+                                ...prev,
+                                [domain._id]: currentPage < totalPages - 1 ? currentPage + 1 : 0
+                              }))}
+                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition"
+                              title="Next"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          )}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex items-center gap-1 flex-shrink-0 justify-center" style={{ minWidth: '80px' }}>
+                  <div className="flex items-center gap-1 flex-shrink-0 justify-center" style={{ minWidth: '120px' }}>
                     <button
                       onClick={() => setEditingSEO(editingSEO === domain._id ? null : domain._id)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
@@ -1181,6 +1279,13 @@ export default function DomainsPage() {
                       title="Delete"
                     >
                       <Trash2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setEditingDomain(domain)}
+                      className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition"
+                      title="Edit Domain"
+                    >
+                      <Edit className="w-4 h-4" />
                     </button>
                   </div>
                 </div>

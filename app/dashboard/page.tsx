@@ -44,6 +44,7 @@ async function getMarketplaceStats() {
       // Domain categories distribution
       supabase.from('domains')
         .select('categoryId, domain_categories(name)')
+        .eq('verificationStatus', 'verified')
         .limit(1000)
     ]);
 
@@ -85,8 +86,8 @@ async function getMarketplaceStats() {
     const publishersMap = new Map((publishersData || []).map(user => [user._id, user]));
 
     // Category distribution
-    const categoryCount = (categoryStatsRes.data || []).reduce((acc: any, domain) => {
-      const cat = domain.domain_categories?.[0]?.name || 'Uncategorized';
+    const categoryCount = (categoryStatsRes.data || []).reduce((acc: any, domain: any) => {
+      const cat = domain.domain_categories?.name || 'Uncategorized';
       acc[cat] = (acc[cat] || 0) + 1;
       return acc;
     }, {});
