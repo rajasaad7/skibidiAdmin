@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -36,7 +36,6 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/activity', icon: Activity, label: "Today's Activity" },
-    { href: '/analytics', icon: BarChart3, label: 'Analytics' },
     { href: '/users', icon: Users, label: 'Users' },
     { href: '/domains', icon: Globe, label: 'Domains' },
     { href: '/orders', icon: ShoppingCart, label: 'Orders' },
