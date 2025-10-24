@@ -13,12 +13,40 @@ interface Order {
   totalPrice: number;
   serviceType: string;
   createdAt: string;
+  updatedAt?: string;
+  // Buyer submission fields
+  articleTitle?: string;
+  articleContent?: string;
+  specialRequirements?: string;
+  targetUrl?: string;
+  anchorText?: string;
+  googleDocsLink?: string;
+  requestContentWriting?: boolean;
+  contentWritingFee?: number;
+  // Seller submission fields
   publishedUrl?: string;
   completionNotes?: string;
+  submittedAt?: string;
+  // Status timestamps
+  acceptedAt?: string;
+  rejectedAt?: string;
+  revisionRequestedAt?: string;
+  completedAt?: string;
+  // Remarks
   rejectionReason?: string;
   refundReason?: string;
+  refundedAmount?: number;
+  // Relations
   domains?: {
     domainName: string;
+  };
+  buyer?: {
+    fullName: string;
+    email: string;
+  };
+  seller?: {
+    fullName: string;
+    email: string;
   };
 }
 
@@ -33,6 +61,15 @@ export default function OrdersPage() {
   const [adminRemarks, setAdminRemarks] = useState<string>('');
   const [publishedUrl, setPublishedUrl] = useState<string>('');
   const [refundAmount, setRefundAmount] = useState<string>('');
+  // Editable buyer fields
+  const [articleTitle, setArticleTitle] = useState<string>('');
+  const [articleContent, setArticleContent] = useState<string>('');
+  const [specialRequirements, setSpecialRequirements] = useState<string>('');
+  const [targetUrl, setTargetUrl] = useState<string>('');
+  const [anchorText, setAnchorText] = useState<string>('');
+  const [googleDocsLink, setGoogleDocsLink] = useState<string>('');
+  // Editable seller fields
+  const [completionNotes, setCompletionNotes] = useState<string>('');
 
   const fetchAllOrders = async () => {
     try {
@@ -114,6 +151,18 @@ export default function OrdersPage() {
         status: newStatus,
       };
 
+      // Add buyer content fields if edited
+      if (articleTitle !== editingOrder.articleTitle) payload.articleTitle = articleTitle;
+      if (articleContent !== editingOrder.articleContent) payload.articleContent = articleContent;
+      if (specialRequirements !== editingOrder.specialRequirements) payload.specialRequirements = specialRequirements;
+      if (targetUrl !== editingOrder.targetUrl) payload.targetUrl = targetUrl;
+      if (anchorText !== editingOrder.anchorText) payload.anchorText = anchorText;
+      if (googleDocsLink !== editingOrder.googleDocsLink) payload.googleDocsLink = googleDocsLink;
+
+      // Add seller fields
+      if (publishedUrl !== editingOrder.publishedUrl) payload.publishedUrl = publishedUrl;
+      if (completionNotes !== editingOrder.completionNotes) payload.completionNotes = completionNotes;
+
       // Add relevant fields based on status
       if (newStatus === 'revision_requested' && adminRemarks) {
         payload.rejectionReason = adminRemarks;
@@ -121,9 +170,8 @@ export default function OrdersPage() {
       if (newStatus === 'rejected' && adminRemarks) {
         payload.rejectionReason = adminRemarks;
       }
-      if (newStatus === 'completed') {
-        if (publishedUrl) payload.publishedUrl = publishedUrl;
-        if (adminRemarks) payload.completionNotes = adminRemarks;
+      if (newStatus === 'completed' && adminRemarks) {
+        payload.completionNotes = completionNotes || adminRemarks;
       }
       if (newStatus === 'refunded' || newStatus === 'refund_requested') {
         if (adminRemarks) payload.refundReason = adminRemarks;
@@ -142,15 +190,22 @@ export default function OrdersPage() {
         setAdminRemarks('');
         setPublishedUrl('');
         setRefundAmount('');
+        setArticleTitle('');
+        setArticleContent('');
+        setSpecialRequirements('');
+        setTargetUrl('');
+        setAnchorText('');
+        setGoogleDocsLink('');
+        setCompletionNotes('');
         fetchOrders();
         fetchAllOrders();
-        alert('Order status updated successfully!');
+        alert('Order updated successfully!');
       } else {
-        alert('Failed to update order status');
+        alert('Failed to update order');
       }
     } catch (error) {
-      console.error('Error updating order status:', error);
-      alert('Error updating order status');
+      console.error('Error updating order:', error);
+      alert('Error updating order');
     }
   };
 
@@ -289,6 +344,13 @@ export default function OrdersPage() {
                             setAdminRemarks('');
                             setPublishedUrl(order.publishedUrl || '');
                             setRefundAmount('');
+                            setArticleTitle(order.articleTitle || '');
+                            setArticleContent(order.articleContent || '');
+                            setSpecialRequirements(order.specialRequirements || '');
+                            setTargetUrl(order.targetUrl || '');
+                            setAnchorText(order.anchorText || '');
+                            setGoogleDocsLink(order.googleDocsLink || '');
+                            setCompletionNotes(order.completionNotes || '');
                           }}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
                           title="Manage Order"
@@ -320,55 +382,147 @@ export default function OrdersPage() {
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              {/* Current Order Info */}
+            <div className="p-6 space-y-6">
+              {/* Order Overview */}
               <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Domain:</span>
-                  <span className="font-medium">{editingOrder.domains?.domainName || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Service:</span>
-                  <span className="font-medium">{editingOrder.serviceType?.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Total Price:</span>
-                  <span className="font-medium">${editingOrder.totalPrice?.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Current Status:</span>
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    editingOrder.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    editingOrder.status === 'paid' || editingOrder.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                    'bg-orange-100 text-orange-800'
-                  }`}>
-                    {editingOrder.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                  </span>
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Order Information</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="text-sm">
+                    <span className="text-gray-600">Domain:</span>
+                    <span className="font-medium ml-2">{editingOrder.domains?.domainName || 'N/A'}</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-gray-600">Service:</span>
+                    <span className="font-medium ml-2">{editingOrder.serviceType?.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-gray-600">Total Price:</span>
+                    <span className="font-medium ml-2">${editingOrder.totalPrice?.toFixed(2)}</span>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-gray-600">Status:</span>
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ml-2 ${
+                      editingOrder.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      editingOrder.status === 'paid' || editingOrder.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                      'bg-orange-100 text-orange-800'
+                    }`}>
+                      {editingOrder.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    </span>
+                  </div>
+                  {editingOrder.buyer && (
+                    <div className="text-sm col-span-2">
+                      <span className="text-gray-600">Buyer:</span>
+                      <span className="font-medium ml-2">{editingOrder.buyer.fullName}</span>
+                      <span className="text-gray-500 ml-1">({editingOrder.buyer.email})</span>
+                    </div>
+                  )}
+                  {editingOrder.seller && (
+                    <div className="text-sm col-span-2">
+                      <span className="text-gray-600">Seller:</span>
+                      <span className="font-medium ml-2">{editingOrder.seller.fullName}</span>
+                      <span className="text-gray-500 ml-1">({editingOrder.seller.email})</span>
+                    </div>
+                  )}
+                  {editingOrder.requestContentWriting && (
+                    <div className="text-sm col-span-2">
+                      <span className="text-gray-600">Content Writing:</span>
+                      <span className="font-medium ml-2">Requested (${editingOrder.contentWritingFee?.toFixed(2) || '0.00'})</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Status Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  New Status
-                </label>
-                <select
-                  value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {statusOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Buyer Submitted Content */}
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Buyer Submitted Content</h4>
 
-              {/* Published URL (for completed status) */}
-              {newStatus === 'completed' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Article Title
+                  </label>
+                  <input
+                    type="text"
+                    value={articleTitle}
+                    onChange={(e) => setArticleTitle(e.target.value)}
+                    placeholder="Article title..."
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Article Content
+                  </label>
+                  <textarea
+                    value={articleContent}
+                    onChange={(e) => setArticleContent(e.target.value)}
+                    placeholder="Full article content..."
+                    rows={6}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Target URL
+                    </label>
+                    <input
+                      type="url"
+                      value={targetUrl}
+                      onChange={(e) => setTargetUrl(e.target.value)}
+                      placeholder="https://example.com/target-page"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Anchor Text
+                    </label>
+                    <input
+                      type="text"
+                      value={anchorText}
+                      onChange={(e) => setAnchorText(e.target.value)}
+                      placeholder="Anchor text for the link..."
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Google Docs Link
+                  </label>
+                  <input
+                    type="url"
+                    value={googleDocsLink}
+                    onChange={(e) => setGoogleDocsLink(e.target.value)}
+                    placeholder="https://docs.google.com/document/..."
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Special Requirements
+                  </label>
+                  <textarea
+                    value={specialRequirements}
+                    onChange={(e) => setSpecialRequirements(e.target.value)}
+                    placeholder="Any special instructions or requirements..."
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Seller Submitted Content */}
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Seller Submission</h4>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Published URL
                   </label>
                   <input
@@ -376,76 +530,148 @@ export default function OrdersPage() {
                     value={publishedUrl}
                     onChange={(e) => setPublishedUrl(e.target.value)}
                     placeholder="https://example.com/published-article"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-              )}
 
-              {/* Refund Amount (for refunded/refund_requested status) */}
-              {(newStatus === 'refunded' || newStatus === 'refund_requested') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Refund Amount
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Completion Notes
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={refundAmount}
-                    onChange={(e) => setRefundAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  <textarea
+                    value={completionNotes}
+                    onChange={(e) => setCompletionNotes(e.target.value)}
+                    placeholder="Notes about the completed work..."
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
-              )}
 
-              {/* Admin Remarks */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Admin Remarks
-                  {(newStatus === 'revision_requested' || newStatus === 'rejected') && (
-                    <span className="text-red-600 ml-1">*</span>
-                  )}
-                </label>
-                <textarea
-                  value={adminRemarks}
-                  onChange={(e) => setAdminRemarks(e.target.value)}
-                  placeholder={
-                    newStatus === 'revision_requested' ? 'Explain what needs to be revised...' :
-                    newStatus === 'rejected' ? 'Explain the reason for rejection...' :
-                    newStatus === 'completed' ? 'Add any completion notes...' :
-                    newStatus === 'refunded' || newStatus === 'refund_requested' ? 'Explain the reason for refund...' :
-                    'Add any admin notes or remarks...'
-                  }
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                {(newStatus === 'revision_requested' || newStatus === 'rejected') && (
-                  <p className="text-xs text-gray-500 mt-1">Required for this status</p>
+                {editingOrder.submittedAt && (
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">Submitted At:</span> {new Date(editingOrder.submittedAt).toLocaleString()}
+                  </div>
                 )}
               </div>
 
-              {/* Existing Remarks Display */}
-              {(editingOrder.completionNotes || editingOrder.rejectionReason || editingOrder.refundReason) && (
-                <div className="bg-blue-50 rounded-lg p-4 space-y-2">
-                  <h4 className="text-sm font-semibold text-blue-900">Previous Remarks:</h4>
-                  {editingOrder.completionNotes && (
-                    <div className="text-sm">
-                      <span className="font-medium text-blue-800">Completion Notes:</span>
-                      <p className="text-blue-700 mt-1">{editingOrder.completionNotes}</p>
-                    </div>
-                  )}
-                  {editingOrder.rejectionReason && (
-                    <div className="text-sm">
-                      <span className="font-medium text-blue-800">Rejection Reason:</span>
-                      <p className="text-blue-700 mt-1">{editingOrder.rejectionReason}</p>
-                    </div>
-                  )}
-                  {editingOrder.refundReason && (
-                    <div className="text-sm">
-                      <span className="font-medium text-blue-800">Refund Reason:</span>
-                      <p className="text-blue-700 mt-1">{editingOrder.refundReason}</p>
-                    </div>
-                  )}
+              {/* Status Management */}
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Status Management</h4>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Change Status
+                  </label>
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {statusOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Refund Amount */}
+                {(newStatus === 'refunded' || newStatus === 'refund_requested') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Refund Amount
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={refundAmount}
+                      onChange={(e) => setRefundAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                )}
+
+                {/* Admin Remarks */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Admin Remarks
+                    {(newStatus === 'revision_requested' || newStatus === 'rejected') && (
+                      <span className="text-red-600 ml-1">*</span>
+                    )}
+                  </label>
+                  <textarea
+                    value={adminRemarks}
+                    onChange={(e) => setAdminRemarks(e.target.value)}
+                    placeholder={
+                      newStatus === 'revision_requested' ? 'Explain what needs to be revised...' :
+                      newStatus === 'rejected' ? 'Explain the reason for rejection...' :
+                      newStatus === 'refunded' || newStatus === 'refund_requested' ? 'Explain the reason for refund...' :
+                      'Add any admin notes or remarks...'
+                    }
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Timestamps */}
+              {(editingOrder.acceptedAt || editingOrder.rejectedAt || editingOrder.revisionRequestedAt || editingOrder.completedAt) && (
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-blue-900 mb-2">Timestamps</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {editingOrder.acceptedAt && (
+                      <div>
+                        <span className="text-blue-800 font-medium">Accepted:</span>
+                        <span className="text-blue-700 ml-2">{new Date(editingOrder.acceptedAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {editingOrder.rejectedAt && (
+                      <div>
+                        <span className="text-blue-800 font-medium">Rejected:</span>
+                        <span className="text-blue-700 ml-2">{new Date(editingOrder.rejectedAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {editingOrder.revisionRequestedAt && (
+                      <div>
+                        <span className="text-blue-800 font-medium">Revision Requested:</span>
+                        <span className="text-blue-700 ml-2">{new Date(editingOrder.revisionRequestedAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {editingOrder.completedAt && (
+                      <div>
+                        <span className="text-blue-800 font-medium">Completed:</span>
+                        <span className="text-blue-700 ml-2">{new Date(editingOrder.completedAt).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Previous Remarks */}
+              {(editingOrder.rejectionReason || editingOrder.refundReason) && (
+                <div className="bg-yellow-50 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-yellow-900 mb-2">Previous Remarks</h4>
+                  <div className="space-y-2">
+                    {editingOrder.rejectionReason && (
+                      <div className="text-sm">
+                        <span className="font-medium text-yellow-800">Rejection Reason:</span>
+                        <p className="text-yellow-700 mt-1">{editingOrder.rejectionReason}</p>
+                      </div>
+                    )}
+                    {editingOrder.refundReason && (
+                      <div className="text-sm">
+                        <span className="font-medium text-yellow-800">Refund Reason:</span>
+                        <p className="text-yellow-700 mt-1">{editingOrder.refundReason}</p>
+                      </div>
+                    )}
+                    {editingOrder.refundedAmount && (
+                      <div className="text-sm">
+                        <span className="font-medium text-yellow-800">Refunded Amount:</span>
+                        <span className="text-yellow-700 ml-2">${editingOrder.refundedAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

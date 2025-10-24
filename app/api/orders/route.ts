@@ -10,7 +10,9 @@ export async function GET(request: NextRequest) {
       .from('marketplace_orders')
       .select(`
         *,
-        domains(domainName)
+        domains(domainName),
+        buyer:users!buyerId(fullName, email),
+        seller:users!publisherId(fullName, email)
       `)
       .order('createdAt', { ascending: false });
 
