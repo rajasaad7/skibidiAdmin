@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Mail, Calendar, Link as LinkIcon, Target, Globe, ShoppingCart, DollarSign, CreditCard, Package, ExternalLink, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, User, Mail, Calendar, Link as LinkIcon, Target, Globe, ShoppingCart, DollarSign, CreditCard, Package, ExternalLink, Edit, Trash2, CheckCircle, XCircle, MessageCircle, Send } from 'lucide-react';
 
 interface LinkData {
   _id: string;
@@ -81,6 +81,11 @@ interface UserDetails {
     twitterId?: string;
     createdAt: string;
     lastActive?: string;
+    contactDetails?: {
+      type: string;
+      value: string;
+      updatedAt: string;
+    } | null;
   };
   stats: {
     totalLinks: number;
@@ -143,6 +148,7 @@ export default function UserDetailsPage() {
     disabled: false,
     disabledLastActive: false,
   });
+  const [showContactModal, setShowContactModal] = useState(false);
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -363,6 +369,34 @@ export default function UserDetailsPage() {
     }
   };
 
+  const handleResetContactDetails = async () => {
+    if (!confirm('Are you sure you want to reset this user\'s contact details? This will remove their contact information.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/users/${userId}/reset-contact`, {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        // Refresh the user details
+        const detailsResponse = await fetch(`/api/users/${userId}`);
+        const data = await detailsResponse.json();
+        if (data.success) {
+          setDetails(data.details);
+        }
+        setShowContactModal(false);
+        alert('Contact details reset successfully!');
+      } else {
+        alert('Failed to reset contact details');
+      }
+    } catch (error) {
+      console.error('Error resetting contact details:', error);
+      alert('Error resetting contact details');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -432,6 +466,15 @@ export default function UserDetailsPage() {
             <div className="text-sm text-gray-500 mt-2">
               Last active: {details.user.lastActive ? new Date(details.user.lastActive).toLocaleDateString() : 'Never'}
             </div>
+            {details.user.contactDetails && (
+              <button
+                onClick={() => setShowContactModal(true)}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition mt-2"
+              >
+                <MessageCircle className="w-3 h-3" />
+                Contact Details
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1391,6 +1434,104 @@ export default function UserDetailsPage() {
                   Update Keyword
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contact Details Modal */}
+      {showContactModal && details.user.contactDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 rounded-t-xl flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white">
+                <MessageCircle className="w-5 h-5" />
+                <h3 className="text-lg font-semibold">Contact Details</h3>
+              </div>
+              <button
+                onClick={() => setShowContactModal(false)}
+                className="text-white hover:text-gray-200 transition"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="text-sm text-gray-600 mb-1">Contact Type</div>
+                    <div className="flex items-center gap-2">
+                      {details.user.contactDetails.type === 'whatsapp' ? (
+                        <>
+                          <MessageCircle className="w-5 h-5 text-green-600" />
+                          <span className="text-lg font-semibold text-gray-900">WhatsApp</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-5 h-5 text-blue-600" />
+                          <span className="text-lg font-semibold text-gray-900">Telegram</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <div className="text-sm text-gray-600 mb-1">Contact Value</div>
+                  <div className="text-lg font-mono font-semibold text-gray-900 bg-white px-3 py-2 rounded border border-gray-300">
+                    {details.user.contactDetails.value}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">Updated</div>
+                  <div className="text-sm text-gray-700">
+                    {new Date(details.user.contactDetails.updatedAt).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                {details.user.contactDetails.type === 'whatsapp' ? (
+                  <a
+                    href={`https://wa.me/${details.user.contactDetails.value.replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Send WhatsApp Message
+                  </a>
+                ) : (
+                  <a
+                    href={`https://t.me/${details.user.contactDetails.value.replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold"
+                  >
+                    <Send className="w-5 h-5" />
+                    Send Telegram Message
+                  </a>
+                )}
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(details.user.contactDetails!.value);
+                    alert('Copied to clipboard!');
+                  }}
+                  className="px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold"
+                >
+                  Copy
+                </button>
+              </div>
+
+              <button
+                onClick={handleResetContactDetails}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold"
+              >
+                <Trash2 className="w-4 h-4" />
+                Reset Contact Info
+              </button>
             </div>
           </div>
         </div>

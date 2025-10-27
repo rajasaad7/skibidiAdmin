@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Search, User, Mail, Calendar, Eye } from 'lucide-react';
+import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface User {
@@ -13,6 +13,11 @@ interface User {
   twitterId?: string;
   createdAt: string;
   lastActive?: string;
+  contactDetails?: {
+    type: string;
+    value: string;
+    updatedAt: string;
+  } | null;
 }
 
 export default function UsersPage() {
@@ -213,7 +218,19 @@ export default function UsersPage() {
                         <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                           <User className="w-4 h-4 text-blue-600" />
                         </div>
-                        <div className="font-medium text-gray-900">{user.fullName}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-gray-900">{user.fullName.split(' ')[0]}</div>
+                          {user.contactDetails && (
+                            <div className="relative group">
+                              <BadgeCheck className="w-4 h-4 text-blue-500 cursor-help" />
+                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50">
+                                <div className="font-semibold mb-1">{user.contactDetails.type === 'whatsapp' ? 'WhatsApp' : 'Telegram'}</div>
+                                <div>{user.contactDetails.value}</div>
+                                <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">

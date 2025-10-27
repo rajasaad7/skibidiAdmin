@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -14,11 +14,31 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0 });
 
   useEffect(() => {
     setIsNavigating(false);
     setIsCollapsed(true); // Close sidebar on mobile after navigation
   }, [pathname]);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const response = await fetch('/api/notifications');
+        const data = await response.json();
+        if (data.success) {
+          setNotifications(data.notifications);
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+      }
+    };
+
+    fetchNotifications();
+    // Refresh notifications every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleNavigation = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     if (pathname !== href) {
@@ -41,6 +61,8 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
     { href: '/orders', icon: ShoppingCart, label: 'Orders' },
     { href: '/payouts', icon: DollarSign, label: 'Payouts' },
     { href: '/indexer', icon: Zap, label: 'Indexer' },
+    { href: '/contacts', icon: Mail, label: 'Contact Submissions' },
+    { href: '/bugs', icon: Bug, label: 'Bug Reports' },
   ];
 
   return (
@@ -97,14 +119,29 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
                 <Link
                   href={item.href}
                   onClick={(e) => handleNavigation(e, item.href)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm ${
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm relative ${
                     isActive
                       ? 'bg-blue-50 text-blue-700 font-medium'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
                 >
                   <Icon className="w-[18px] h-[18px]" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {item.href === '/contacts' && notifications.newContacts > 0 && (
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
+                      {notifications.newContacts}
+                    </span>
+                  )}
+                  {item.href === '/bugs' && notifications.newBugs > 0 && (
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
+                      {notifications.newBugs}
+                    </span>
+                  )}
+                  {item.href === '/domains' && notifications.pendingDomains > 0 && (
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-orange-500 rounded-full">
+                      {notifications.pendingDomains}
+                    </span>
+                  )}
                 </Link>
               </li>
             );
