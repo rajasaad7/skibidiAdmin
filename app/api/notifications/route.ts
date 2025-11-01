@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET() {
   try {
     // Fetch all counts in parallel for better performance
-    const [contactsResult, bugsResult, statsResult] = await Promise.all([
+    const [contactsResult, bugsResult, statsResult, payoutsResult] = await Promise.all([
       // Get count of new contacts (status = 'new' or 'pending')
       supabase
         .from('contacts')
@@ -18,12 +18,27 @@ export async function GET() {
         .eq('status', 'open'),
 
       // Get domain stats using RPC function (same as domains page)
-      supabase.rpc('get_domain_stats')
+      supabase.rpc('get_domain_stats'),
+
+      // Get count of pending payouts (status = 'pending' or 'requested')
+      supabase
+        .from('publisher_payouts')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['pending', 'processing'])
     ]);
 
-    if (contactsResult.error) throw contactsResult.error;
-    if (bugsResult.error) throw bugsResult.error;
-    if (statsResult.error) throw statsResult.error;
+    if (contactsResult.error) {
+      console.error('Contacts error:', contactsResult.error);
+    }
+    if (bugsResult.error) {
+      console.error('Bugs error:', bugsResult.error);
+    }
+    if (statsResult.error) {
+      console.error('Stats error:', statsResult.error);
+    }
+    if (payoutsResult.error) {
+      console.error('Payouts error:', payoutsResult.error);
+    }
 
     const stats = statsResult.data || { pending: 0 };
 
@@ -33,6 +48,7 @@ export async function GET() {
         newContacts: contactsResult.count || 0,
         newBugs: bugsResult.count || 0,
         pendingDomains: stats.pending || 0,
+        pendingPayouts: payoutsResult.count || 0,
       }
     });
   } catch (error) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -14,7 +14,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0 });
+  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, pendingPayouts: 0 });
 
   useEffect(() => {
     setIsNavigating(false);
@@ -57,6 +57,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/activity', icon: Activity, label: "Today's Activity" },
     { href: '/users', icon: Users, label: 'Users' },
+    { href: '/press-releases', icon: FileText, label: 'Press Releases' },
     { href: '/domains', icon: Globe, label: 'Domains' },
     { href: '/orders', icon: ShoppingCart, label: 'Orders' },
     { href: '/payouts', icon: DollarSign, label: 'Payouts' },
@@ -140,6 +141,11 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
                   {item.href === '/domains' && notifications.pendingDomains > 0 && (
                     <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-orange-500 rounded-full">
                       {notifications.pendingDomains}
+                    </span>
+                  )}
+                  {item.href === '/payouts' && notifications.pendingPayouts > 0 && (
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-orange-500 rounded-full">
+                      {notifications.pendingPayouts}
                     </span>
                   )}
                 </Link>
