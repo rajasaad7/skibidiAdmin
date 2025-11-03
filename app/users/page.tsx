@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck } from 'lucide-react';
+import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck, Info } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface User {
@@ -13,6 +13,14 @@ interface User {
   twitterId?: string;
   createdAt: string;
   lastActive?: string;
+  UTM?: {
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+    utm_term?: string;
+    utm_content?: string;
+    utm_id?: string;
+  } | null;
   contactDetails?: {
     type: string;
     value: string;
@@ -220,6 +228,32 @@ export default function UsersPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="font-medium text-gray-900">{user.fullName.split(' ')[0]}</div>
+                          {user.UTM?.utm_source && (
+                            <div className="relative group">
+                              <Info className="w-4 h-4 text-purple-500 cursor-help" />
+                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 min-w-max">
+                                <div className="space-y-1">
+                                  <div className="font-semibold text-purple-300 border-b border-gray-700 pb-1 mb-1">Traffic Source</div>
+                                  {user.UTM.utm_source && (
+                                    <div><span className="text-gray-400">Source:</span> {user.UTM.utm_source}</div>
+                                  )}
+                                  {user.UTM.utm_medium && (
+                                    <div><span className="text-gray-400">Medium:</span> {user.UTM.utm_medium}</div>
+                                  )}
+                                  {user.UTM.utm_campaign && (
+                                    <div><span className="text-gray-400">Campaign:</span> {user.UTM.utm_campaign}</div>
+                                  )}
+                                  {user.UTM.utm_term && (
+                                    <div><span className="text-gray-400">Term:</span> {user.UTM.utm_term}</div>
+                                  )}
+                                  {user.UTM.utm_content && (
+                                    <div><span className="text-gray-400">Content:</span> {user.UTM.utm_content}</div>
+                                  )}
+                                </div>
+                                <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+                              </div>
+                            </div>
+                          )}
                           {user.contactDetails && (
                             <div className="relative group">
                               <BadgeCheck className="w-4 h-4 text-blue-500 cursor-help" />

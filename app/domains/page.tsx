@@ -411,6 +411,42 @@ export default function DomainsPage() {
     document.body.removeChild(link);
   };
 
+  const exportNADomainsToCSV = async () => {
+    try {
+      // Fetch all domains with N/A metrics from the API
+      const response = await fetch('/api/domains/export-na-domains');
+      const data = await response.json();
+
+      if (!data.success || data.domains.length === 0) {
+        alert('No domains found with all metrics as N/A');
+        return;
+      }
+
+      // Create CSV content with only domain names
+      const headers = ['Domain Name'];
+      const rows = data.domains.map((domain: Domain) => [domain.domainName]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map((row: string[]) => row.map((cell: string) => `"${cell}"`).join(','))
+      ].join('\n');
+
+      // Create download link
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `domains_na_metrics_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Error exporting N/A domains:', error);
+      alert('Error exporting domains');
+    }
+  };
+
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const text = e.clipboardData.getData('text');
     setPastedData(text);
@@ -890,13 +926,22 @@ export default function DomainsPage() {
       <div>
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
         <h1 className="text-lg md:text-3xl font-bold text-gray-900">Domain Management</h1>
-        <button
-          onClick={fetchDomains}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchDomains}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+          <button
+            onClick={exportNADomainsToCSV}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
+          >
+            <Download className="w-4 h-4" />
+            Export N/A Domains
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards - Now Clickable Filters */}

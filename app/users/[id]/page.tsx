@@ -81,6 +81,14 @@ interface UserDetails {
     twitterId?: string;
     createdAt: string;
     lastActive?: string;
+    UTM?: {
+      utm_source?: string;
+      utm_medium?: string;
+      utm_campaign?: string;
+      utm_term?: string;
+      utm_content?: string;
+      utm_id?: string;
+    } | null;
     contactDetails?: {
       type: string;
       value: string;
@@ -466,6 +474,11 @@ export default function UserDetailsPage() {
             <div className="text-sm text-gray-500 mt-2">
               Last active: {details.user.lastActive ? new Date(details.user.lastActive).toLocaleDateString() : 'Never'}
             </div>
+            {details.user.UTM?.utm_source && (
+              <div className="text-xs text-gray-600 mt-1">
+                Source: <span className="font-semibold text-blue-600">{details.user.UTM.utm_source}</span>
+              </div>
+            )}
             {details.user.contactDetails && (
               <button
                 onClick={() => setShowContactModal(true)}

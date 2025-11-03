@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     // Build user query based on filter
     let userQuery = supabase
       .from('users')
-      .select('_id, fullName, email, isEmailVerified, googleId, twitterId, createdAt, lastActive, contactDetails')
+      .select('_id, fullName, email, isEmailVerified, googleId, twitterId, createdAt, lastActive, contactDetails, UTM')
       .order('createdAt', { ascending: false });
 
     // Apply filters
