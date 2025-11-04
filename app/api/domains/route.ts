@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
         isActive,
         isFeatured,
         publisherOfferings,
+        editHistory,
         domain_categories(name)
       `);
 

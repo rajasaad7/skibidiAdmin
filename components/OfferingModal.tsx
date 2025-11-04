@@ -33,6 +33,11 @@ interface OfferingModalProps {
     _id: string;
     domainName: string;
     verificationStatus?: string;
+    editHistory?: {
+      changes: string[];
+      timestamp: string;
+      publisherId: string;
+    };
   };
   offering: PublisherOffering;
   index: number;
@@ -72,6 +77,23 @@ export default function OfferingModal({
       <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[95vh] overflow-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 z-10">
+          {/* Edit History Alert */}
+          {domain.editHistory && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <div className="text-xs font-semibold text-blue-900 mb-1">Recent Changes</div>
+                  <div className="text-sm text-blue-800">
+                    {domain.editHistory.changes.join(', ')}
+                  </div>
+                  <div className="text-xs text-blue-600 mt-1">
+                    Modified on {new Date(domain.editHistory.timestamp).toLocaleString()} by Publisher ID: {domain.editHistory.publisherId.substring(0, 8)}...
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-start justify-between mb-3">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Publisher Offering Details</h3>

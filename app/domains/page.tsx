@@ -69,6 +69,11 @@ interface Domain {
   verifiedOfferings: number;
   rejectedOfferings: number;
   domain_categories?: { name: string } | null;
+  editHistory?: {
+    changes: string[];
+    timestamp: string;
+    publisherId: string;
+  };
 }
 
 export default function DomainsPage() {
