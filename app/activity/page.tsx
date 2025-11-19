@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Users, Globe, ShoppingCart, Link as LinkIcon, Target, Activity, TrendingUp, CheckCircle, Package, RefreshCw, Zap, DollarSign, FolderOpen, Copy, ExternalLink } from 'lucide-react';
+import { Users, Globe, ShoppingCart, Link as LinkIcon, Target, Activity, TrendingUp, CheckCircle, Package, RefreshCw, Zap, DollarSign, FolderOpen, Copy, ExternalLink, Info } from 'lucide-react';
 
 interface ActivityData {
   newUsers: { count: number; data: any[] };
@@ -271,7 +271,7 @@ export default function TodayActivityPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-visible">
             {activeSection === 'newUsers' && activity.newUsers.data.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
@@ -284,7 +284,76 @@ export default function TodayActivityPage() {
                 <tbody className="divide-y divide-gray-200">
                   {activity.newUsers.data.map((user) => (
                     <tr key={user._id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{user.fullName}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                        <div className="flex items-center gap-2">
+                          {user.fullName}
+                          {user.UTM && (user.UTM.utm_source || user.UTM.gclid || user.UTM.fbclid || user.UTM.ttclid || user.UTM.twclid || user.UTM.msclkid || user.UTM.li_fat_id) && (
+                            <div className="relative group">
+                              <Info className="w-4 h-4 text-purple-500 cursor-help" />
+                              <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-[9999] min-w-max">
+                                <div className="absolute bottom-full left-4 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
+                                <div className="space-y-1">
+                                  <div className="font-semibold text-purple-300 border-b border-gray-700 pb-1 mb-1">Traffic Source</div>
+                                  {user.UTM.utm_source && (
+                                    <div><span className="text-gray-400">Source:</span> {user.UTM.utm_source}</div>
+                                  )}
+                                  {user.UTM.utm_medium && (
+                                    <div><span className="text-gray-400">Medium:</span> {user.UTM.utm_medium}</div>
+                                  )}
+                                  {user.UTM.utm_campaign && (
+                                    <div><span className="text-gray-400">Campaign:</span> {user.UTM.utm_campaign}</div>
+                                  )}
+                                  {user.UTM.utm_term && (
+                                    <div><span className="text-gray-400">Term:</span> {user.UTM.utm_term}</div>
+                                  )}
+                                  {user.UTM.utm_content && (
+                                    <div><span className="text-gray-400">Content:</span> {user.UTM.utm_content}</div>
+                                  )}
+                                  {(user.UTM.gclid || user.UTM.gbraid || user.UTM.wbraid) && (
+                                    <div className="font-semibold text-blue-300 pt-1 mt-1">Google Ads</div>
+                                  )}
+                                  {user.UTM.gclid && (
+                                    <div><span className="text-gray-400">GCLID:</span> {user.UTM.gclid.substring(0, 20)}...</div>
+                                  )}
+                                  {user.UTM.gad_campaignid && (
+                                    <div><span className="text-gray-400">Campaign ID:</span> {user.UTM.gad_campaignid}</div>
+                                  )}
+                                  {user.UTM.fbclid && (
+                                    <>
+                                      <div className="font-semibold text-blue-400 border-t border-gray-700 pt-1 mt-1">Facebook Ads</div>
+                                      <div><span className="text-gray-400">FBCLID:</span> {user.UTM.fbclid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.ttclid && (
+                                    <>
+                                      <div className="font-semibold text-pink-300 border-t border-gray-700 pt-1 mt-1">TikTok Ads</div>
+                                      <div><span className="text-gray-400">TTCLID:</span> {user.UTM.ttclid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.twclid && (
+                                    <>
+                                      <div className="font-semibold text-sky-300 border-t border-gray-700 pt-1 mt-1">Twitter Ads</div>
+                                      <div><span className="text-gray-400">TWCLID:</span> {user.UTM.twclid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.msclkid && (
+                                    <>
+                                      <div className="font-semibold text-cyan-300 border-t border-gray-700 pt-1 mt-1">Microsoft Ads</div>
+                                      <div><span className="text-gray-400">MSCLKID:</span> {user.UTM.msclkid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.li_fat_id && (
+                                    <>
+                                      <div className="font-semibold text-blue-300 border-t border-gray-700 pt-1 mt-1">LinkedIn Ads</div>
+                                      <div><span className="text-gray-400">LI_FAT_ID:</span> {user.UTM.li_fat_id.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{new Date(user.createdAt).toLocaleString()}</td>
                     </tr>

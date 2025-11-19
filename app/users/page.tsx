@@ -20,6 +20,19 @@ interface User {
     utm_term?: string;
     utm_content?: string;
     utm_id?: string;
+    // Ad platform tracking
+    gclid?: string;
+    gbraid?: string;
+    wbraid?: string;
+    gad_source?: string;
+    gad_campaignid?: string;
+    fbclid?: string;
+    ttclid?: string;
+    twclid?: string;
+    msclkid?: string;
+    li_fat_id?: string;
+    ref?: string;
+    referrer?: string;
   } | null;
   contactDetails?: {
     type: string;
@@ -198,8 +211,6 @@ export default function UsersPage() {
               <tr>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">User</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Email</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Auth Method</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Created</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Last Active</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
@@ -208,13 +219,13 @@ export default function UsersPage() {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
                     Loading...
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
                     No users found
                   </td>
                 </tr>
@@ -228,10 +239,11 @@ export default function UsersPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="font-medium text-gray-900">{user.fullName.split(' ')[0]}</div>
-                          {user.UTM?.utm_source && (
+                          {user.UTM && (user.UTM.utm_source || user.UTM.gclid || user.UTM.fbclid || user.UTM.ttclid || user.UTM.twclid || user.UTM.msclkid || user.UTM.li_fat_id) && (
                             <div className="relative group">
                               <Info className="w-4 h-4 text-purple-500 cursor-help" />
-                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 min-w-max">
+                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 min-w-max">
+                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
                                 <div className="space-y-1">
                                   <div className="font-semibold text-purple-300 border-b border-gray-700 pb-1 mb-1">Traffic Source</div>
                                   {user.UTM.utm_source && (
@@ -249,8 +261,46 @@ export default function UsersPage() {
                                   {user.UTM.utm_content && (
                                     <div><span className="text-gray-400">Content:</span> {user.UTM.utm_content}</div>
                                   )}
+                                  {(user.UTM.gclid || user.UTM.gbraid || user.UTM.wbraid) && (
+                                    <div className="font-semibold text-blue-300 pt-1 mt-1">Google Ads</div>
+                                  )}
+                                  {user.UTM.gclid && (
+                                    <div><span className="text-gray-400">GCLID:</span> {user.UTM.gclid.substring(0, 20)}...</div>
+                                  )}
+                                  {user.UTM.gad_campaignid && (
+                                    <div><span className="text-gray-400">Campaign ID:</span> {user.UTM.gad_campaignid}</div>
+                                  )}
+                                  {user.UTM.fbclid && (
+                                    <>
+                                      <div className="font-semibold text-blue-400 border-t border-gray-700 pt-1 mt-1">Facebook Ads</div>
+                                      <div><span className="text-gray-400">FBCLID:</span> {user.UTM.fbclid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.ttclid && (
+                                    <>
+                                      <div className="font-semibold text-pink-300 border-t border-gray-700 pt-1 mt-1">TikTok Ads</div>
+                                      <div><span className="text-gray-400">TTCLID:</span> {user.UTM.ttclid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.twclid && (
+                                    <>
+                                      <div className="font-semibold text-sky-300 border-t border-gray-700 pt-1 mt-1">Twitter Ads</div>
+                                      <div><span className="text-gray-400">TWCLID:</span> {user.UTM.twclid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.msclkid && (
+                                    <>
+                                      <div className="font-semibold text-cyan-300 border-t border-gray-700 pt-1 mt-1">Microsoft Ads</div>
+                                      <div><span className="text-gray-400">MSCLKID:</span> {user.UTM.msclkid.substring(0, 20)}...</div>
+                                    </>
+                                  )}
+                                  {user.UTM.li_fat_id && (
+                                    <>
+                                      <div className="font-semibold text-blue-300 border-t border-gray-700 pt-1 mt-1">LinkedIn Ads</div>
+                                      <div><span className="text-gray-400">LI_FAT_ID:</span> {user.UTM.li_fat_id.substring(0, 20)}...</div>
+                                    </>
+                                  )}
                                 </div>
-                                <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 w-2 h-2 bg-gray-900 rotate-45"></div>
                               </div>
                             </div>
                           )}
@@ -271,36 +321,6 @@ export default function UsersPage() {
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Mail className="w-4 h-4" />
                         {user.email}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {user.isEmailVerified ? (
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                          Verified
-                        </span>
-                      ) : (
-                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
-                          Unverified
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        {user.googleId && (
-                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                            Google
-                          </span>
-                        )}
-                        {user.twitterId && (
-                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-sky-100 text-sky-800">
-                            Twitter
-                          </span>
-                        )}
-                        {!user.googleId && !user.twitterId && (
-                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                            Email
-                          </span>
-                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">

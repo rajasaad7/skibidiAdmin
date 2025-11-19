@@ -88,6 +88,19 @@ interface UserDetails {
       utm_term?: string;
       utm_content?: string;
       utm_id?: string;
+      // Ad platform tracking
+      gclid?: string;
+      gbraid?: string;
+      wbraid?: string;
+      gad_source?: string;
+      gad_campaignid?: string;
+      fbclid?: string;
+      ttclid?: string;
+      twclid?: string;
+      msclkid?: string;
+      li_fat_id?: string;
+      ref?: string;
+      referrer?: string;
     } | null;
     contactDetails?: {
       type: string;
@@ -474,9 +487,82 @@ export default function UserDetailsPage() {
             <div className="text-sm text-gray-500 mt-2">
               Last active: {details.user.lastActive ? new Date(details.user.lastActive).toLocaleDateString() : 'Never'}
             </div>
-            {details.user.UTM?.utm_source && (
-              <div className="text-xs text-gray-600 mt-1">
-                Source: <span className="font-semibold text-blue-600">{details.user.UTM.utm_source}</span>
+            {details.user.UTM && (details.user.UTM.utm_source || details.user.UTM.gclid || details.user.UTM.fbclid || details.user.UTM.ttclid || details.user.UTM.twclid || details.user.UTM.msclkid || details.user.UTM.li_fat_id) && (
+              <div className="text-sm text-gray-500 mt-1 relative group inline-block">
+                Source: <span className="font-semibold text-blue-600 cursor-help">
+                  {details.user.UTM.utm_source ? details.user.UTM.utm_source :
+                   (details.user.UTM.gclid || details.user.UTM.gbraid || details.user.UTM.wbraid) ? 'Google Ads' :
+                   details.user.UTM.fbclid ? 'Facebook Ads' :
+                   details.user.UTM.ttclid ? 'TikTok Ads' :
+                   details.user.UTM.twclid ? 'Twitter Ads' :
+                   details.user.UTM.msclkid ? 'Microsoft Ads' :
+                   details.user.UTM.li_fat_id ? 'LinkedIn Ads' : 'Unknown'}
+                </span>
+                {/* Tooltip with full details */}
+                <div className="absolute top-full right-0 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 min-w-max">
+                  <div className="absolute bottom-full right-4 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
+                  <div className="space-y-1">
+                    {details.user.UTM.utm_source && (
+                      <div><span className="text-gray-400">Source:</span> {details.user.UTM.utm_source}</div>
+                    )}
+                    {details.user.UTM.utm_medium && (
+                      <div><span className="text-gray-400">Medium:</span> {details.user.UTM.utm_medium}</div>
+                    )}
+                    {details.user.UTM.utm_campaign && (
+                      <div><span className="text-gray-400">Campaign:</span> {details.user.UTM.utm_campaign}</div>
+                    )}
+                    {details.user.UTM.utm_term && (
+                      <div><span className="text-gray-400">Term:</span> {details.user.UTM.utm_term}</div>
+                    )}
+                    {details.user.UTM.utm_content && (
+                      <div><span className="text-gray-400">Content:</span> {details.user.UTM.utm_content}</div>
+                    )}
+                    {(details.user.UTM.gclid || details.user.UTM.gbraid || details.user.UTM.wbraid) && (
+                      <>
+                        <div className="font-semibold text-blue-300 border-b border-gray-700 pb-1 mb-1 text-left">Google Ads</div>
+                        {details.user.UTM.gclid && (
+                          <div className="text-left"><span className="text-gray-400">GCLID:</span> {details.user.UTM.gclid.substring(0, 20)}...</div>
+                        )}
+                        {details.user.UTM.gad_campaignid && (
+                          <div className="text-left"><span className="text-gray-400">Campaign ID:</span> {details.user.UTM.gad_campaignid}</div>
+                        )}
+                        {details.user.UTM.gad_source && (
+                          <div className="text-left"><span className="text-gray-400">Ad Source:</span> {details.user.UTM.gad_source}</div>
+                        )}
+                      </>
+                    )}
+                    {details.user.UTM.fbclid && (
+                      <>
+                        <div className="font-semibold text-blue-400 pt-1 mt-1 border-t border-gray-700">Facebook Ads</div>
+                        <div><span className="text-gray-400">FBCLID:</span> {details.user.UTM.fbclid.substring(0, 20)}...</div>
+                      </>
+                    )}
+                    {details.user.UTM.ttclid && (
+                      <>
+                        <div className="font-semibold text-pink-300 pt-1 mt-1 border-t border-gray-700">TikTok Ads</div>
+                        <div><span className="text-gray-400">TTCLID:</span> {details.user.UTM.ttclid.substring(0, 20)}...</div>
+                      </>
+                    )}
+                    {details.user.UTM.twclid && (
+                      <>
+                        <div className="font-semibold text-sky-300 pt-1 mt-1 border-t border-gray-700">Twitter Ads</div>
+                        <div><span className="text-gray-400">TWCLID:</span> {details.user.UTM.twclid.substring(0, 20)}...</div>
+                      </>
+                    )}
+                    {details.user.UTM.msclkid && (
+                      <>
+                        <div className="font-semibold text-cyan-300 pt-1 mt-1 border-t border-gray-700">Microsoft Ads</div>
+                        <div><span className="text-gray-400">MSCLKID:</span> {details.user.UTM.msclkid.substring(0, 20)}...</div>
+                      </>
+                    )}
+                    {details.user.UTM.li_fat_id && (
+                      <>
+                        <div className="font-semibold text-blue-300 pt-1 mt-1 border-t border-gray-700">LinkedIn Ads</div>
+                        <div><span className="text-gray-400">LI_FAT_ID:</span> {details.user.UTM.li_fat_id.substring(0, 20)}...</div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
             {details.user.contactDetails && (

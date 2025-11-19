@@ -28,7 +28,7 @@ export async function GET() {
       totalIndexerCampaignsRes,
     ] = await Promise.all([
       // New users today
-      supabase.from('users').select('_id, fullName, email, createdAt').gte('createdAt', todayISO).order('createdAt', { ascending: false }),
+      supabase.from('users').select('_id, fullName, email, createdAt, "UTM"').gte('createdAt', todayISO).order('createdAt', { ascending: false }),
 
       // New domains today
       supabase.from('domains').select('_id, domainName, verificationStatus, createdAt, users!inner(fullName)').gte('createdAt', todayISO).order('createdAt', { ascending: false }),

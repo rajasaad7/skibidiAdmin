@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw, Edit2, X } from 'lucide-react';
+import { RefreshCw, Edit2, X, Trash2 } from 'lucide-react';
 
 interface Order {
   _id: string;
@@ -70,6 +70,9 @@ export default function OrdersPage() {
   const [googleDocsLink, setGoogleDocsLink] = useState<string>('');
   // Editable seller fields
   const [completionNotes, setCompletionNotes] = useState<string>('');
+  // Delete modal
+  const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchAllOrders = async () => {
     try {
@@ -206,6 +209,31 @@ export default function OrdersPage() {
     } catch (error) {
       console.error('Error updating order:', error);
       alert('Error updating order');
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!deletingOrder) return;
+
+    setDeleteLoading(true);
+    try {
+      const response = await fetch(`/api/orders/${deletingOrder._id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setDeletingOrder(null);
+        fetchOrders();
+        fetchAllOrders();
+        alert('Order deleted successfully!');
+      } else {
+        alert('Failed to delete order');
+      }
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      alert('Error deleting order');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -357,6 +385,13 @@ export default function OrdersPage() {
                         >
                           <Edit2 className="w-3 h-3" />
                           Manage
+                        </button>
+                        <button
+                          onClick={() => setDeletingOrder(order)}
+                          className="inline-flex items-center p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition"
+                          title="Delete Order"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </td>
@@ -689,6 +724,56 @@ export default function OrdersPage() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Update Status
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">Delete Order</h3>
+              <p className="text-sm text-gray-600 text-center mb-4">
+                Are you sure you want to delete order <span className="font-semibold">{deletingOrder.orderNumber}</span>? This action cannot be undone.
+              </p>
+              <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                <div className="text-sm">
+                  <div><span className="text-gray-500">Domain:</span> <span className="font-medium">{deletingOrder.domains?.domainName || 'N/A'}</span></div>
+                  <div><span className="text-gray-500">Total:</span> <span className="font-medium">${deletingOrder.totalPrice?.toFixed(2)}</span></div>
+                  <div><span className="text-gray-500">Status:</span> <span className="font-medium">{deletingOrder.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => setDeletingOrder(null)}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteOrder}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleteLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </>
+                )}
               </button>
             </div>
           </div>
