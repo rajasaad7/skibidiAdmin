@@ -565,15 +565,17 @@ export default function UserDetailsPage() {
                 </div>
               </div>
             )}
-            {details.user.contactDetails && (
-              <button
-                onClick={() => setShowContactModal(true)}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition mt-2"
-              >
-                <MessageCircle className="w-3 h-3" />
-                Contact Details
-              </button>
-            )}
+            <div className="mt-2">
+              {details.user.contactDetails && (
+                <button
+                  onClick={() => setShowContactModal(true)}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition"
+                >
+                  <MessageCircle className="w-3 h-3" />
+                  Contact Details
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
