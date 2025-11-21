@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit } from 'lucide-react';
+import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit, Sparkles, ChevronDown } from 'lucide-react';
 import OfferingModal from '@/components/OfferingModal';
 import DomainEditModal from '@/components/DomainEditModal';
 
@@ -97,6 +97,61 @@ export default function DomainsPage() {
   const [hoveredOffering, setHoveredOffering] = useState<{ domainId: string; index: number } | null>(null);
   const [editingDomain, setEditingDomain] = useState<Domain | null>(null);
   const [publisherPages, setPublisherPages] = useState<Record<string, number>>({});
+  const [showCategorizationModal, setShowCategorizationModal] = useState(false);
+  const [categorizationProgress, setCategorizationProgress] = useState<{
+    total: number;
+    completed: number;
+    current: string;
+    results: any[];
+  } | null>(null);
+  const [categorizationResult, setCategorizationResult] = useState<{
+    success: boolean;
+    updatedCount: number;
+    errors?: string[];
+    results: any[];
+  } | null>(null);
+  const [liveCategorizationStatus, setLiveCategorizationStatus] = useState<{
+    domains: Array<{
+      domainId: string;
+      domainName: string;
+      status: 'pending' | 'processing' | 'success' | 'error';
+      category?: string;
+      language?: string;
+      country?: string;
+      confidence?: string;
+      reason?: string;
+      error?: string;
+      userAction?: 'approved' | 'rejected';
+    }>;
+    isProcessing: boolean;
+  } | null>(null);
+  const [showApproveDropdown, setShowApproveDropdown] = useState(false);
+  const [showRejectDropdown, setShowRejectDropdown] = useState(false);
+
+  // Modal states
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
+  const [inputModal, setInputModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    placeholder?: string;
+    onConfirm: (value: string) => void;
+  }>({ isOpen: false, title: '', message: '', placeholder: '', onConfirm: () => {} });
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'error' | 'info';
+  }>({ isOpen: false, title: '', message: '', type: 'info' });
 
   const fetchDomains = async () => {
     setLoading(true);
@@ -152,21 +207,27 @@ export default function DomainsPage() {
   };
 
   const handleRejectOffering = async (domainId: string, offeringIndex: number) => {
-    const reason = prompt('Reason for rejection:');
-    if (!reason) return;
-
-    try {
-      const response = await fetch('/api/domains/reject-offering', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domainId, offeringIndex, reason })
-      });
-      if (response.ok) {
-        fetchDomains();
+    setInputModal({
+      isOpen: true,
+      title: 'Reject Offering',
+      message: 'Please enter the reason for rejection:',
+      placeholder: 'Enter rejection reason...',
+      onConfirm: async (reason) => {
+        if (!reason) return;
+        try {
+          const response = await fetch('/api/domains/reject-offering', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domainId, offeringIndex, reason })
+          });
+          if (response.ok) {
+            fetchDomains();
+          }
+        } catch (error) {
+          console.error('Error rejecting offering:', error);
+        }
       }
-    } catch (error) {
-      console.error('Error rejecting offering:', error);
-    }
+    });
   };
 
   const handleUpdateSEO = async (domainId: string) => {
@@ -193,19 +254,27 @@ export default function DomainsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this domain? This action cannot be undone.')) return;
-    try {
-      const response = await fetch('/api/domains/delete', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-      });
-      if (response.ok) {
-        fetchDomains();
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Domain',
+      message: 'Are you sure you want to delete this domain? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const response = await fetch('/api/domains/delete', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+          });
+          if (response.ok) {
+            fetchDomains();
+          }
+        } catch (error) {
+          console.error('Error deleting domain:', error);
+        }
       }
-    } catch (error) {
-      console.error('Error deleting domain:', error);
-    }
+    });
   };
 
   const handleSaveDomain = async (updatedDomain: Partial<Domain>) => {
@@ -284,100 +353,285 @@ export default function DomainsPage() {
     }
   };
 
-  const handleBulkApprove = async () => {
+  const handleBulkApprovePending = async () => {
     const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
 
     if (selectedDomainsList.length === 0) {
-      alert('Please select at least one domain');
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to approve all pending publisher offerings for ${selectedDomainsList.length} selected domain(s)?`)) {
-      return;
-    }
-
-    try {
-      const updates: { domainId: string; offeringIndex: number }[] = [];
-      selectedDomainsList.forEach(domain => {
-        domain.publisherOfferings.forEach((offering, index) => {
-          if (offering.adminApproved === null || offering.adminApproved === undefined) {
-            updates.push({
-              domainId: domain._id,
-              offeringIndex: index
-            });
-          }
-        });
+      setAlertModal({
+        isOpen: true,
+        title: 'No Selection',
+        message: 'Please select at least one domain',
+        type: 'error'
       });
-
-      if (updates.length === 0) {
-        alert('No pending offerings found in selected domains');
-        return;
-      }
-
-      const promises = updates.map(update =>
-        fetch('/api/domains/approve-offering', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(update)
-        })
-      );
-
-      await Promise.all(promises);
-      alert(`Successfully approved ${updates.length} pending offering(s)`);
-      fetchDomains();
-      setSelectedDomains(new Set());
-    } catch (error) {
-      console.error('Error bulk approving:', error);
-      alert('Error approving offerings');
+      return;
     }
+
+    // Count pending offerings only
+    let pendingOfferings = 0;
+    const updates: { domainId: string; offeringIndex: number }[] = [];
+
+    selectedDomainsList.forEach(domain => {
+      domain.publisherOfferings.forEach((offering, index) => {
+        if (offering.adminApproved === null || offering.adminApproved === undefined) {
+          pendingOfferings++;
+          updates.push({ domainId: domain._id, offeringIndex: index });
+        }
+      });
+    });
+
+    if (pendingOfferings === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No Pending Offerings',
+        message: 'No pending offerings found in selected domains',
+        type: 'info'
+      });
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Approve Pending Offerings',
+      message: `Are you sure you want to approve ${pendingOfferings} PENDING offering(s) for ${selectedDomainsList.length} selected domain(s)?`,
+      confirmText: 'Approve',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const promises = updates.map(update =>
+            fetch('/api/domains/approve-offering', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(update)
+            })
+          );
+
+          await Promise.all(promises);
+          setAlertModal({
+            isOpen: true,
+            title: 'Success',
+            message: `Successfully approved ${pendingOfferings} pending offering(s)`,
+            type: 'success'
+          });
+          fetchDomains();
+          setSelectedDomains(new Set());
+        } catch (error) {
+          console.error('Error bulk approving:', error);
+          setAlertModal({
+            isOpen: true,
+            title: 'Error',
+            message: 'Error approving offerings',
+            type: 'error'
+          });
+        }
+      }
+    });
   };
 
-  const handleBulkReject = async () => {
+  const handleBulkApproveAll = async () => {
     const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
 
     if (selectedDomainsList.length === 0) {
-      alert('Please select at least one domain');
+      setAlertModal({
+        isOpen: true,
+        title: 'No Selection',
+        message: 'Please select at least one domain',
+        type: 'error'
+      });
       return;
     }
 
-    const reason = prompt('Enter rejection reason for all pending offerings:');
-    if (!reason) return;
+    // Count total offerings to approve
+    let totalOfferings = 0;
+    selectedDomainsList.forEach(domain => {
+      totalOfferings += domain.publisherOfferings.length;
+    });
 
-    try {
-      const updates: { domainId: string; offeringIndex: number; reason: string }[] = [];
-      selectedDomainsList.forEach(domain => {
-        domain.publisherOfferings.forEach((offering, index) => {
-          if (offering.adminApproved === null || offering.adminApproved === undefined) {
-            updates.push({
-              domainId: domain._id,
-              offeringIndex: index,
-              reason: reason
+    setConfirmModal({
+      isOpen: true,
+      title: 'Approve All Offerings',
+      message: `Are you sure you want to approve ALL publisher offerings (including already approved/rejected) for ${selectedDomainsList.length} selected domain(s)? This will approve ${totalOfferings} offering(s) in total.`,
+      confirmText: 'Approve All',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const promises: Promise<any>[] = [];
+
+          selectedDomainsList.forEach(domain => {
+            domain.publisherOfferings.forEach((offering, index) => {
+              promises.push(
+                fetch('/api/domains/approve-offering', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    domainId: domain._id,
+                    offeringIndex: index
+                  })
+                })
+              );
             });
-          }
-        });
-      });
+          });
 
-      if (updates.length === 0) {
-        alert('No pending offerings found in selected domains');
-        return;
+          await Promise.all(promises);
+          setAlertModal({
+            isOpen: true,
+            title: 'Success',
+            message: `Successfully approved ${totalOfferings} offering(s) across ${selectedDomainsList.length} domain(s)`,
+            type: 'success'
+          });
+          fetchDomains();
+          setSelectedDomains(new Set());
+        } catch (error) {
+          console.error('Error bulk approving:', error);
+          setAlertModal({
+            isOpen: true,
+            title: 'Error',
+            message: 'Error approving offerings',
+            type: 'error'
+          });
+        }
       }
+    });
+  };
 
-      const promises = updates.map(update =>
-        fetch('/api/domains/reject-offering', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(update)
-        })
-      );
+  const handleBulkRejectPending = async () => {
+    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
 
-      await Promise.all(promises);
-      alert(`Successfully rejected ${updates.length} pending offering(s)`);
-      fetchDomains();
-      setSelectedDomains(new Set());
-    } catch (error) {
-      console.error('Error bulk rejecting:', error);
-      alert('Error rejecting offerings');
+    if (selectedDomainsList.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No Selection',
+        message: 'Please select at least one domain',
+        type: 'error'
+      });
+      return;
     }
+
+    // Count pending offerings only
+    let pendingOfferings = 0;
+    const updates: { domainId: string; offeringIndex: number }[] = [];
+
+    selectedDomainsList.forEach(domain => {
+      domain.publisherOfferings.forEach((offering, index) => {
+        if (offering.adminApproved === null || offering.adminApproved === undefined) {
+          pendingOfferings++;
+          updates.push({ domainId: domain._id, offeringIndex: index });
+        }
+      });
+    });
+
+    if (pendingOfferings === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No Pending Offerings',
+        message: 'No pending offerings found in selected domains',
+        type: 'info'
+      });
+      return;
+    }
+
+    setInputModal({
+      isOpen: true,
+      title: 'Reject Pending Offerings',
+      message: `Enter rejection reason for ${pendingOfferings} PENDING offering(s):`,
+      placeholder: 'Enter rejection reason...',
+      onConfirm: async (reason) => {
+        if (!reason) return;
+        try {
+          const promises = updates.map(update =>
+            fetch('/api/domains/reject-offering', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...update, reason })
+            })
+          );
+
+          await Promise.all(promises);
+          setAlertModal({
+            isOpen: true,
+            title: 'Success',
+            message: `Successfully rejected ${pendingOfferings} pending offering(s)`,
+            type: 'success'
+          });
+          fetchDomains();
+          setSelectedDomains(new Set());
+        } catch (error) {
+          console.error('Error bulk rejecting:', error);
+          setAlertModal({
+            isOpen: true,
+            title: 'Error',
+            message: 'Error rejecting offerings',
+            type: 'error'
+          });
+        }
+      }
+    });
+  };
+
+  const handleBulkRejectAll = async () => {
+    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
+
+    if (selectedDomainsList.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No Selection',
+        message: 'Please select at least one domain',
+        type: 'error'
+      });
+      return;
+    }
+
+    // Count total offerings to reject
+    let totalOfferings = 0;
+    selectedDomainsList.forEach(domain => {
+      totalOfferings += domain.publisherOfferings.length;
+    });
+
+    setInputModal({
+      isOpen: true,
+      title: 'Reject All Offerings',
+      message: `Enter rejection reason for ALL ${totalOfferings} offering(s) (including already approved/rejected):`,
+      placeholder: 'Enter rejection reason...',
+      onConfirm: async (reason) => {
+        if (!reason) return;
+        try {
+          const promises: Promise<any>[] = [];
+
+          selectedDomainsList.forEach(domain => {
+            domain.publisherOfferings.forEach((offering, index) => {
+              promises.push(
+                fetch('/api/domains/reject-offering', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    domainId: domain._id,
+                    offeringIndex: index,
+                    reason: reason
+                  })
+                })
+              );
+            });
+          });
+
+          await Promise.all(promises);
+          setAlertModal({
+            isOpen: true,
+            title: 'Success',
+            message: `Successfully rejected ${totalOfferings} offering(s) across ${selectedDomainsList.length} domain(s)`,
+            type: 'success'
+          });
+          fetchDomains();
+          setSelectedDomains(new Set());
+        } catch (error) {
+          console.error('Error bulk rejecting:', error);
+          setAlertModal({
+            isOpen: true,
+            title: 'Error',
+            message: 'Error rejecting offerings',
+            type: 'error'
+          });
+        }
+      }
+    });
   };
 
   const exportToCSV = () => {
@@ -385,7 +639,12 @@ export default function DomainsPage() {
     const domainsToExport = filteredDomains.filter(d => selectedDomains.has(d._id));
 
     if (domainsToExport.length === 0) {
-      alert('Please select at least one domain to export');
+      setAlertModal({
+        isOpen: true,
+        title: 'No Selection',
+        message: 'Please select at least one domain to export',
+        type: 'error'
+      });
       return;
     }
 
@@ -423,7 +682,12 @@ export default function DomainsPage() {
       const data = await response.json();
 
       if (!data.success || data.domains.length === 0) {
-        alert('No domains found with all metrics as N/A');
+        setAlertModal({
+          isOpen: true,
+          title: 'No Domains Found',
+          message: 'No domains found with all metrics as N/A',
+          type: 'info'
+        });
         return;
       }
 
@@ -448,7 +712,12 @@ export default function DomainsPage() {
       document.body.removeChild(link);
     } catch (error) {
       console.error('Error exporting N/A domains:', error);
-      alert('Error exporting domains');
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error exporting domains',
+        type: 'error'
+      });
     }
   };
 
@@ -550,6 +819,209 @@ export default function DomainsPage() {
       setShowImportModal(false);
     } finally {
       setUploadingCSV(false);
+    }
+  };
+
+  const handleAutoCategorize = async () => {
+    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
+
+    if (selectedDomainsList.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No Selection',
+        message: 'Please select at least one domain to categorize',
+        type: 'error'
+      });
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Auto-Categorize Domains',
+      message: `Are you sure you want to auto-categorize ${selectedDomainsList.length} selected domain(s)? This will use AI to detect the category, language, and country for each domain.`,
+      confirmText: 'Start Categorization',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        await startCategorizationProcess(selectedDomainsList);
+      }
+    });
+  };
+
+  const startCategorizationProcess = async (selectedDomainsList: Domain[]) => {
+
+    // Initialize live status for all domains
+    const initialStatus = selectedDomainsList.map(d => ({
+      domainId: d._id,
+      domainName: d.domainName,
+      status: 'pending' as const,
+    }));
+
+    setLiveCategorizationStatus({
+      domains: initialStatus,
+      isProcessing: true,
+    });
+    setShowCategorizationModal(true);
+
+    let successCount = 0;
+    const allResults: any[] = [];
+    const allErrors: string[] = [];
+
+    // Process domains one by one
+    for (let i = 0; i < selectedDomainsList.length; i++) {
+      const domain = selectedDomainsList[i];
+
+      // Update status to processing
+      setLiveCategorizationStatus(prev => prev ? {
+        ...prev,
+        domains: prev.domains.map((d, idx) =>
+          idx === i ? { ...d, status: 'processing' as const } : d
+        ),
+      } : null);
+
+      try {
+        // Call API for single domain
+        const response = await fetch('/api/domains/categorize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domainIds: [domain._id] })
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.results && data.results.length > 0) {
+          const result = data.results[0];
+          allResults.push(result);
+
+          if (result.categoryId) {
+            successCount++;
+            // Update status to success
+            setLiveCategorizationStatus(prev => prev ? {
+              ...prev,
+              domains: prev.domains.map((d, idx) =>
+                idx === i ? {
+                  ...d,
+                  status: 'success' as const,
+                  category: result.suggestedCategory,
+                  language: result.suggestedLanguage,
+                  country: result.suggestedCountry,
+                  confidence: result.confidence,
+                  reason: result.reason,
+                } : d
+              ),
+            } : null);
+          } else {
+            allErrors.push(`${domain.domainName}: ${result.reason || 'Unknown error'}`);
+            // Update status to error
+            setLiveCategorizationStatus(prev => prev ? {
+              ...prev,
+              domains: prev.domains.map((d, idx) =>
+                idx === i ? {
+                  ...d,
+                  status: 'error' as const,
+                  error: result.reason || 'Failed to categorize',
+                } : d
+              ),
+            } : null);
+          }
+        } else {
+          allErrors.push(`${domain.domainName}: ${data.error || 'Failed to categorize'}`);
+          setLiveCategorizationStatus(prev => prev ? {
+            ...prev,
+            domains: prev.domains.map((d, idx) =>
+              idx === i ? {
+                ...d,
+                status: 'error' as const,
+                error: data.error || 'Failed to categorize',
+              } : d
+            ),
+          } : null);
+        }
+      } catch (error: any) {
+        console.error(`Error categorizing ${domain.domainName}:`, error);
+        allErrors.push(`${domain.domainName}: ${error.message}`);
+        setLiveCategorizationStatus(prev => prev ? {
+          ...prev,
+          domains: prev.domains.map((d, idx) =>
+            idx === i ? {
+              ...d,
+              status: 'error' as const,
+              error: error.message,
+            } : d
+          ),
+        } : null);
+      }
+    }
+
+    // Mark processing as complete
+    setLiveCategorizationStatus(prev => prev ? { ...prev, isProcessing: false } : null);
+
+    // Refresh domains list
+    fetchDomains();
+    setSelectedDomains(new Set());
+  };
+
+  const handleCategorizationApprove = async (domainId: string, idx: number) => {
+    try {
+      // Get the domain to find all offerings
+      const domain = domains.find(d => d._id === domainId);
+      if (!domain) return;
+
+      // Approve all offerings for this domain
+      const promises = domain.publisherOfferings.map((offering, offeringIndex) =>
+        fetch('/api/domains/approve-offering', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            domainId,
+            offeringIndex
+          })
+        })
+      );
+
+      await Promise.all(promises);
+
+      setLiveCategorizationStatus(prev => prev ? {
+        ...prev,
+        domains: prev.domains.map((d, i) =>
+          i === idx ? { ...d, userAction: 'approved' as const } : d
+        ),
+      } : null);
+    } catch (error) {
+      console.error('Error approving domain:', error);
+    }
+  };
+
+  const handleCategorizationReject = async (domainId: string, idx: number) => {
+    try {
+      // Get the domain to find all offerings
+      const domain = domains.find(d => d._id === domainId);
+      if (!domain) return;
+
+      const reason = 'Rejected during bulk categorization';
+
+      // Reject all offerings for this domain
+      const promises = domain.publisherOfferings.map((offering, offeringIndex) =>
+        fetch('/api/domains/reject-offering', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            domainId,
+            offeringIndex,
+            reason
+          })
+        })
+      );
+
+      await Promise.all(promises);
+
+      setLiveCategorizationStatus(prev => prev ? {
+        ...prev,
+        domains: prev.domains.map((d, i) =>
+          i === idx ? { ...d, userAction: 'rejected' as const } : d
+        ),
+      } : null);
+    } catch (error) {
+      console.error('Error rejecting domain:', error);
     }
   };
 
@@ -835,6 +1307,316 @@ export default function DomainsPage() {
         </div>
       )}
 
+      {/* Live Categorization Progress Modal */}
+      {showCategorizationModal && liveCategorizationStatus && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full h-[90vh] flex flex-col">
+            <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Sparkles className={`w-6 h-6 text-indigo-600 ${liveCategorizationStatus.isProcessing ? 'animate-pulse' : ''}`} />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Auto-Categorizing Domains
+                </h3>
+              </div>
+              {!liveCategorizationStatus.isProcessing && (
+                <button
+                  onClick={() => {
+                    setShowCategorizationModal(false);
+                    setLiveCategorizationStatus(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {/* Progress Summary */}
+              <div className="flex-shrink-0 px-6 pt-6 pb-4">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-600 mb-1">Total</div>
+                    <div className="text-xl font-bold text-gray-900">{liveCategorizationStatus.domains.length}</div>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-3">
+                    <div className="text-xs text-yellow-600 mb-1">Pending</div>
+                    <div className="text-xl font-bold text-yellow-900">
+                      {liveCategorizationStatus.domains.filter(d => d.status === 'pending').length}
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="text-xs text-blue-600 mb-1">Processing</div>
+                    <div className="text-xl font-bold text-blue-900">
+                      {liveCategorizationStatus.domains.filter(d => d.status === 'processing').length}
+                    </div>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="text-xs text-green-600 mb-1">Success</div>
+                    <div className="text-xl font-bold text-green-900">
+                      {liveCategorizationStatus.domains.filter(d => d.status === 'success').length}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable Table */}
+              <div className="flex-1 overflow-auto px-6 pb-6">
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Domain</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Category</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Language</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Country</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Confidence</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-900">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {liveCategorizationStatus.domains.map((domain, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm">
+                            {domain.status === 'pending' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-700">
+                                <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                Pending
+                              </span>
+                            )}
+                            {domain.status === 'processing' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700">
+                                <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></div>
+                                Processing
+                              </span>
+                            )}
+                            {domain.status === 'success' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-700">
+                                <CheckCircle className="w-3 h-3" />
+                                Success
+                              </span>
+                            )}
+                            {domain.status === 'error' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-700">
+                                <XCircle className="w-3 h-3" />
+                                Error
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{domain.domainName}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {domain.category ? (
+                              <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-indigo-100 text-indigo-700">
+                                {domain.category}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{domain.language || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{domain.country || '-'}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {domain.confidence ? (
+                              <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded ${
+                                domain.confidence === 'High' ? 'bg-green-100 text-green-700' :
+                                domain.confidence === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {domain.confidence}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {domain.status === 'success' && !domain.userAction && (
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => handleCategorizationApprove(domain.domainId, idx)}
+                                  className="p-1.5 text-green-600 hover:bg-green-50 rounded transition"
+                                  title="Approve"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleCategorizationReject(domain.domainId, idx)}
+                                  className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
+                                  title="Reject"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+                            {domain.userAction === 'approved' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">
+                                <CheckCircle className="w-3 h-3" />
+                                Approved
+                              </span>
+                            )}
+                            {domain.userAction === 'rejected' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded bg-red-100 text-red-700">
+                                <XCircle className="w-3 h-3" />
+                                Rejected
+                              </span>
+                            )}
+                            {(domain.status === 'pending' || domain.status === 'processing' || domain.status === 'error') && (
+                              <span className="text-gray-400 text-center block">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {!liveCategorizationStatus.isProcessing && (
+                <div className="flex-shrink-0 px-6 pb-6">
+                  <div className="text-center bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="text-sm text-green-600 font-medium">✓ Categorization complete!</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Categorization Result Modal */}
+      {categorizationResult && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {categorizationResult.success ? (
+                  <CheckCircle className="w-6 h-6 text-green-600" />
+                ) : (
+                  <XCircle className="w-6 h-6 text-red-600" />
+                )}
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {categorizationResult.success ? 'Categorization Complete' : 'Categorization Failed'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setCategorizationResult(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="text-sm text-blue-600 mb-1">Total Processed</div>
+                  <div className="text-2xl font-bold text-blue-900">{categorizationResult.results.length}</div>
+                </div>
+                <div className={`rounded-lg p-4 ${categorizationResult.success ? 'bg-green-50' : 'bg-red-50'}`}>
+                  <div className={`text-sm mb-1 ${categorizationResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                    Successfully Updated
+                  </div>
+                  <div className={`text-2xl font-bold ${categorizationResult.success ? 'text-green-900' : 'text-red-900'}`}>
+                    {categorizationResult.updatedCount}
+                  </div>
+                </div>
+              </div>
+
+              {/* Results Table */}
+              {categorizationResult.results.length > 0 && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto max-h-96">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Domain</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Category</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Language</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Country</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Confidence</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {categorizationResult.results.map((result, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 text-sm text-gray-900">{result.domainName}</td>
+                            <td className="px-4 py-2 text-sm">
+                              {result.suggestedCategory ? (
+                                <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-indigo-100 text-indigo-700">
+                                  {result.suggestedCategory}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">N/A</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-600">
+                              {result.suggestedLanguage ? (
+                                <span className="font-medium">{result.suggestedLanguage}</span>
+                              ) : (
+                                <span className="text-gray-400">N/A</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-600">
+                              {result.suggestedCountry ? (
+                                <span className="font-medium">{result.suggestedCountry}</span>
+                              ) : (
+                                <span className="text-gray-400">N/A</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded ${
+                                result.confidence === 'High' ? 'bg-green-100 text-green-700' :
+                                result.confidence === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {result.confidence}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{result.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Errors */}
+              {categorizationResult.errors && categorizationResult.errors.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-yellow-900 font-medium mb-2">
+                        {categorizationResult.errors.length} Warning{categorizationResult.errors.length !== 1 ? 's' : ''}
+                      </p>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {categorizationResult.errors.map((error, idx) => (
+                          <p key={idx} className="text-yellow-700 text-sm">
+                            • {error}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-end border-t border-gray-200">
+              <button
+                onClick={() => setCategorizationResult(null)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Upload Result Modal */}
       {uploadResult && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1031,29 +1813,94 @@ export default function DomainsPage() {
         <div className="flex items-center gap-2">
           {selectedDomains.size > 0 && (
             <>
-              <span className="text-sm text-gray-600">
+              <span className="text-xs text-gray-600 font-medium">
                 {selectedDomains.size} selected
               </span>
-              <button
-                onClick={handleBulkApprove}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
-              >
-                <CheckCircle className="w-4 h-4" />
-                Approve All Pending
-              </button>
-              <button
-                onClick={handleBulkReject}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
-              >
-                <XCircle className="w-4 h-4" />
-                Reject All Pending
-              </button>
+
+              {/* Approve Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowApproveDropdown(!showApproveDropdown)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Approve
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {showApproveDropdown && (
+                  <div className="absolute top-full mt-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[180px]">
+                    <button
+                      onClick={() => {
+                        handleBulkApprovePending();
+                        setShowApproveDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs hover:bg-gray-50 transition first:rounded-t-lg"
+                    >
+                      <div className="font-medium text-gray-900">Pending Only</div>
+                      <div className="text-gray-500 text-[10px]">Approve only pending offerings</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleBulkApproveAll();
+                        setShowApproveDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs hover:bg-gray-50 transition border-t border-gray-100 last:rounded-b-lg"
+                    >
+                      <div className="font-medium text-gray-900">All Offerings</div>
+                      <div className="text-gray-500 text-[10px]">Approve all (override rejected)</div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Reject Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowRejectDropdown(!showRejectDropdown)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  Reject
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {showRejectDropdown && (
+                  <div className="absolute top-full mt-1 left-0 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[180px]">
+                    <button
+                      onClick={() => {
+                        handleBulkRejectPending();
+                        setShowRejectDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs hover:bg-gray-50 transition first:rounded-t-lg"
+                    >
+                      <div className="font-medium text-gray-900">Pending Only</div>
+                      <div className="text-gray-500 text-[10px]">Reject only pending offerings</div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleBulkRejectAll();
+                        setShowRejectDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs hover:bg-gray-50 transition border-t border-gray-100 last:rounded-b-lg"
+                    >
+                      <div className="font-medium text-gray-900">All Offerings</div>
+                      <div className="text-gray-500 text-[10px]">Reject all (override approved)</div>
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition"
               >
-                <Download className="w-4 h-4" />
-                Export CSV
+                <Download className="w-3.5 h-3.5" />
+                Export
+              </button>
+              <button
+                onClick={handleAutoCategorize}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Auto-Categorize
               </button>
             </>
           )}
@@ -1062,9 +1909,9 @@ export default function DomainsPage() {
               setShowImportModal(true);
               setImportType('paste');
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5" />
             Bulk Update
           </button>
         </div>
@@ -1454,6 +2301,107 @@ export default function DomainsPage() {
               Next
               <ChevronRight className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">{confirmModal.title}</h3>
+            <p className="text-gray-600 mb-6">{confirmModal.message}</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+              >
+                {confirmModal.cancelText || 'Cancel'}
+              </button>
+              <button
+                onClick={() => {
+                  confirmModal.onConfirm();
+                  setConfirmModal({ ...confirmModal, isOpen: false });
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
+              >
+                {confirmModal.confirmText || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Input Modal */}
+      {inputModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">{inputModal.title}</h3>
+            <p className="text-gray-600 mb-4">{inputModal.message}</p>
+            <input
+              type="text"
+              id="modal-input"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-6"
+              placeholder={inputModal.placeholder}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const value = (e.target as HTMLInputElement).value;
+                  inputModal.onConfirm(value);
+                  setInputModal({ ...inputModal, isOpen: false });
+                }
+              }}
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setInputModal({ ...inputModal, isOpen: false })}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const input = document.getElementById('modal-input') as HTMLInputElement;
+                  const value = input?.value || '';
+                  inputModal.onConfirm(value);
+                  setInputModal({ ...inputModal, isOpen: false });
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alert Modal */}
+      {alertModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-start gap-3 mb-4">
+              {alertModal.type === 'success' && (
+                <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0" />
+              )}
+              {alertModal.type === 'error' && (
+                <XCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
+              )}
+              {alertModal.type === 'info' && (
+                <AlertCircle className="w-6 h-6 text-blue-600 flex-shrink-0" />
+              )}
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">{alertModal.title}</h3>
+                <p className="text-gray-600">{alertModal.message}</p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setAlertModal({ ...alertModal, isOpen: false })}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}
