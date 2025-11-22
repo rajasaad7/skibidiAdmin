@@ -83,7 +83,8 @@ export default function DomainsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
-  const [stats, setStats] = useState({ total: 0, pending: 0, verified: 0, rejected: 0, domainsWithOwner: 0, domainsWithReseller: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, verified: 0, rejected: 0, domainsWithOwner: 0, domainsWithReseller: 0, uncategorized: 0 });
+  const [showUncategorized, setShowUncategorized] = useState(false);
   const [editingSEO, setEditingSEO] = useState<string | null>(null);
   const [seoMetrics, setSeoMetrics] = useState({ domainRating: '', domainAuthority: '', spamScore: '', organicTraffic: '' });
   const [viewingOffering, setViewingOffering] = useState<{ domain: Domain; offering: PublisherOffering; index: number } | null>(null);
@@ -162,6 +163,12 @@ export default function DomainsPage() {
         params.append('status', filter);
       }
       params.append('page', page.toString());
+      params.append('limit', pagination.limit.toString());
+
+      // Add uncategorized filter
+      if (showUncategorized) {
+        params.append('uncategorized', 'true');
+      }
 
       // Add search query to params
       if (searchQuery.trim()) {
@@ -189,7 +196,7 @@ export default function DomainsPage() {
 
   useEffect(() => {
     fetchDomains();
-  }, [filter, page]);
+  }, [filter, page, pagination.limit, showUncategorized]);
 
   const handleApproveOffering = async (domainId: string, offeringIndex: number) => {
     try {
@@ -1732,7 +1739,7 @@ export default function DomainsPage() {
       </div>
 
       {/* Stats Cards - Now Clickable Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-6">
         <button
           onClick={() => setFilter('all')}
           className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
@@ -1786,6 +1793,18 @@ export default function DomainsPage() {
         >
           <div className="text-sm text-gray-600 mb-1">Reseller Only</div>
           <div className="text-2xl font-bold text-purple-600">{stats.domainsWithReseller}</div>
+        </button>
+        <button
+          onClick={() => {
+            setShowUncategorized(!showUncategorized);
+            setPage(1);
+          }}
+          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            showUncategorized ? 'border-yellow-500 ring-2 ring-yellow-200' : 'border-gray-200'
+          }`}
+        >
+          <div className="text-sm text-gray-600 mb-1">Uncategorized</div>
+          <div className="text-2xl font-bold text-yellow-600">{stats.uncategorized}</div>
         </button>
       </div>
 
@@ -2251,8 +2270,29 @@ export default function DomainsPage() {
       {/* Pagination */}
       {!loading && pagination.totalPages > 1 && (
         <div className="mt-6 flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} domains
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-600">
+              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} domains
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Rows per page:</span>
+              <select
+                value={pagination.limit}
+                onChange={(e) => {
+                  const newLimit = parseInt(e.target.value);
+                  setPagination(prev => ({ ...prev, limit: newLimit }));
+                  setPage(1);
+                }}
+                className="pl-3 pr-8 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition appearance-none bg-white"
+                style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e\")", backgroundPosition: "right 0.5rem center", backgroundRepeat: "no-repeat", backgroundSize: "1.5em 1.5em" }}
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={150}>150</option>
+                <option value={200}>200</option>
+                <option value={pagination.total}>Show All ({pagination.total})</option>
+              </select>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button

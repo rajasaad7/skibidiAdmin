@@ -6,7 +6,8 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get('status');
   const search = searchParams.get('search');
   const page = parseInt(searchParams.get('page') || '1');
-  const limit = 50;
+  const limit = parseInt(searchParams.get('limit') || '50');
+  const uncategorized = searchParams.get('uncategorized') === 'true';
   const offset = (page - 1) * limit;
 
   try {
@@ -77,6 +78,14 @@ export async function GET(request: NextRequest) {
 
     // Filter domains based on status BEFORE pagination
     let filteredDomains = allDomains || [];
+
+    // Apply uncategorized filter if requested
+    if (uncategorized) {
+      filteredDomains = filteredDomains.filter(domain =>
+        domain.categoryId === 'b396a018-9721-4aff-b554-5acd46b098d3'
+      );
+    }
+
     if (status && status !== 'all') {
       filteredDomains = filteredDomains.filter(domain => {
         const offerings = domain.publisherOfferings || [];
@@ -156,10 +165,18 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Calculate uncategorized count from all domains
+    const uncategorizedCount = (allDomains || []).filter(domain =>
+      domain.categoryId === 'b396a018-9721-4aff-b554-5acd46b098d3'
+    ).length;
+
     return NextResponse.json({
       success: true,
       domains: domainsWithCounts,
-      stats,
+      stats: {
+        ...stats,
+        uncategorized: uncategorizedCount
+      },
       pagination: {
         page,
         limit,
