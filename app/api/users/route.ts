@@ -3,10 +3,26 @@ import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
   const search = searchParams.get('search');
   const filter = searchParams.get('filter');
 
   try {
+    // If ID is provided, fetch single user by ID
+    if (id) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('_id, fullName, email')
+        .eq('_id', id)
+        .single();
+
+      if (error) throw error;
+
+      return NextResponse.json({
+        success: true,
+        users: data ? [data] : []
+      });
+    }
 
     // Get stats
     const today = new Date();

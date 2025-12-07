@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { RefreshCw, Edit2, X, Trash2 } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
 
 interface Order {
   _id: string;
@@ -10,8 +11,22 @@ interface Order {
   publisherId: string;
   domainId: string;
   status: string;
-  totalPrice: number;
   serviceType: string;
+  // Price fields
+  basePrice: number;
+  platformFee: number;
+  totalPrice: number;
+  publisherEarnings: number;
+  contentWritingFee?: number;
+  requestContentWriting?: boolean;
+  // Payment fields
+  paymentMethod?: string;
+  paymentStatus?: string;
+  paddleTransactionId?: string;
+  stripeTransactionId?: string;
+  stripeSessionId?: string;
+  paidAt?: string;
+  // Dates
   createdAt: string;
   updatedAt?: string;
   // Buyer submission fields
@@ -21,8 +36,6 @@ interface Order {
   targetUrl?: string;
   anchorText?: string;
   googleDocsLink?: string;
-  requestContentWriting?: boolean;
-  contentWritingFee?: number;
   // Seller submission fields
   publishedUrl?: string;
   completionNotes?: string;
@@ -32,10 +45,13 @@ interface Order {
   rejectedAt?: string;
   revisionRequestedAt?: string;
   completedAt?: string;
+  deadlineAt?: string;
   // Remarks
   rejectionReason?: string;
   refundReason?: string;
   refundedAmount?: number;
+  refundRequestedAt?: string;
+  refundedAt?: string;
   // Relations
   domains?: {
     domainName: string;
@@ -57,22 +73,60 @@ export default function OrdersPage() {
   const [filter, setFilter] = useState<string>('all');
   const [serviceTypeFilters, setServiceTypeFilters] = useState<string[]>(['guest_post', 'link_insertion', 'featured_domain']);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // Core order fields
+  const [serviceType, setServiceType] = useState<string>('');
+  const [buyerId, setBuyerId] = useState<string>('');
+  const [publisherId, setPublisherId] = useState<string>('');
+  const [domainId, setDomainId] = useState<string>('');
   const [newStatus, setNewStatus] = useState<string>('');
-  const [adminRemarks, setAdminRemarks] = useState<string>('');
-  const [publishedUrl, setPublishedUrl] = useState<string>('');
-  const [refundAmount, setRefundAmount] = useState<string>('');
-  // Editable buyer fields
+
+  // Price fields
+  const [basePrice, setBasePrice] = useState<string>('');
+  const [platformFee, setPlatformFee] = useState<string>('');
+  const [totalPrice, setTotalPrice] = useState<string>('');
+  const [publisherEarnings, setPublisherEarnings] = useState<string>('');
+  const [contentWritingFee, setContentWritingFee] = useState<string>('');
+  const [requestContentWriting, setRequestContentWriting] = useState<boolean>(false);
+
+  // Payment fields
+  const [paymentMethod, setPaymentMethod] = useState<string>('');
+  const [paymentStatus, setPaymentStatus] = useState<string>('');
+  const [paddleTransactionId, setPaddleTransactionId] = useState<string>('');
+  const [stripeTransactionId, setStripeTransactionId] = useState<string>('');
+  const [stripeSessionId, setStripeSessionId] = useState<string>('');
+
+  // Buyer content fields
   const [articleTitle, setArticleTitle] = useState<string>('');
   const [articleContent, setArticleContent] = useState<string>('');
   const [specialRequirements, setSpecialRequirements] = useState<string>('');
   const [targetUrl, setTargetUrl] = useState<string>('');
   const [anchorText, setAnchorText] = useState<string>('');
   const [googleDocsLink, setGoogleDocsLink] = useState<string>('');
-  // Editable seller fields
+
+  // Seller fields
+  const [publishedUrl, setPublishedUrl] = useState<string>('');
   const [completionNotes, setCompletionNotes] = useState<string>('');
+
+  // Admin remarks
+  const [adminRemarks, setAdminRemarks] = useState<string>('');
+  const [refundAmount, setRefundAmount] = useState<string>('');
+
+  // Edit mode
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Name lookups for verification
+  const [domainName, setDomainName] = useState<string>('');
+  const [buyerName, setBuyerName] = useState<string>('');
+  const [publisherName, setPublisherName] = useState<string>('');
+
   // Delete modal
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Refresh loading
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchAllOrders = async () => {
     try {
@@ -148,23 +202,45 @@ export default function OrdersPage() {
   const handleUpdateStatus = async () => {
     if (!editingOrder || !newStatus) return;
 
+    setIsSaving(true);
     try {
       const payload: any = {
         orderId: editingOrder._id,
         status: newStatus,
       };
 
-      // Add buyer content fields if edited
-      if (articleTitle !== editingOrder.articleTitle) payload.articleTitle = articleTitle;
-      if (articleContent !== editingOrder.articleContent) payload.articleContent = articleContent;
-      if (specialRequirements !== editingOrder.specialRequirements) payload.specialRequirements = specialRequirements;
-      if (targetUrl !== editingOrder.targetUrl) payload.targetUrl = targetUrl;
-      if (anchorText !== editingOrder.anchorText) payload.anchorText = anchorText;
-      if (googleDocsLink !== editingOrder.googleDocsLink) payload.googleDocsLink = googleDocsLink;
+      // Core order fields
+      if (serviceType !== editingOrder.serviceType) payload.serviceType = serviceType;
+      if (buyerId !== editingOrder.buyerId) payload.buyerId = buyerId;
+      if (publisherId !== editingOrder.publisherId) payload.publisherId = publisherId;
+      if (domainId !== editingOrder.domainId) payload.domainId = domainId;
 
-      // Add seller fields
-      if (publishedUrl !== editingOrder.publishedUrl) payload.publishedUrl = publishedUrl;
-      if (completionNotes !== editingOrder.completionNotes) payload.completionNotes = completionNotes;
+      // Price fields
+      if (basePrice !== editingOrder.basePrice?.toString()) payload.basePrice = parseFloat(basePrice);
+      if (platformFee !== editingOrder.platformFee?.toString()) payload.platformFee = parseFloat(platformFee);
+      if (totalPrice !== editingOrder.totalPrice?.toString()) payload.totalPrice = parseFloat(totalPrice);
+      if (publisherEarnings !== editingOrder.publisherEarnings?.toString()) payload.publisherEarnings = parseFloat(publisherEarnings);
+      if (contentWritingFee !== (editingOrder.contentWritingFee?.toString() || '')) payload.contentWritingFee = contentWritingFee ? parseFloat(contentWritingFee) : null;
+      if (requestContentWriting !== editingOrder.requestContentWriting) payload.requestContentWriting = requestContentWriting;
+
+      // Payment fields
+      if (paymentMethod !== (editingOrder.paymentMethod || '')) payload.paymentMethod = paymentMethod;
+      if (paymentStatus !== (editingOrder.paymentStatus || '')) payload.paymentStatus = paymentStatus;
+      if (paddleTransactionId !== (editingOrder.paddleTransactionId || '')) payload.paddleTransactionId = paddleTransactionId;
+      if (stripeTransactionId !== (editingOrder.stripeTransactionId || '')) payload.stripeTransactionId = stripeTransactionId;
+      if (stripeSessionId !== (editingOrder.stripeSessionId || '')) payload.stripeSessionId = stripeSessionId;
+
+      // Buyer content fields
+      if (articleTitle !== (editingOrder.articleTitle || '')) payload.articleTitle = articleTitle;
+      if (articleContent !== (editingOrder.articleContent || '')) payload.articleContent = articleContent;
+      if (specialRequirements !== (editingOrder.specialRequirements || '')) payload.specialRequirements = specialRequirements;
+      if (targetUrl !== (editingOrder.targetUrl || '')) payload.targetUrl = targetUrl;
+      if (anchorText !== (editingOrder.anchorText || '')) payload.anchorText = anchorText;
+      if (googleDocsLink !== (editingOrder.googleDocsLink || '')) payload.googleDocsLink = googleDocsLink;
+
+      // Seller fields
+      if (publishedUrl !== (editingOrder.publishedUrl || '')) payload.publishedUrl = publishedUrl;
+      if (completionNotes !== (editingOrder.completionNotes || '')) payload.completionNotes = completionNotes;
 
       // Add relevant fields based on status
       if (newStatus === 'revision_requested' && adminRemarks) {
@@ -188,28 +264,121 @@ export default function OrdersPage() {
       });
 
       if (response.ok) {
-        setEditingOrder(null);
-        setNewStatus('');
-        setAdminRemarks('');
-        setPublishedUrl('');
-        setRefundAmount('');
-        setArticleTitle('');
-        setArticleContent('');
-        setSpecialRequirements('');
-        setTargetUrl('');
-        setAnchorText('');
-        setGoogleDocsLink('');
-        setCompletionNotes('');
+        // Update the editingOrder object with new values
+        const updatedOrder = { ...editingOrder };
+        if (payload.serviceType) updatedOrder.serviceType = payload.serviceType;
+        if (payload.buyerId) updatedOrder.buyerId = payload.buyerId;
+        if (payload.publisherId) updatedOrder.publisherId = payload.publisherId;
+        if (payload.domainId) updatedOrder.domainId = payload.domainId;
+        if (payload.status) updatedOrder.status = payload.status;
+        if (payload.basePrice) updatedOrder.basePrice = payload.basePrice;
+        if (payload.platformFee) updatedOrder.platformFee = payload.platformFee;
+        if (payload.totalPrice) updatedOrder.totalPrice = payload.totalPrice;
+        if (payload.publisherEarnings) updatedOrder.publisherEarnings = payload.publisherEarnings;
+        setEditingOrder(updatedOrder);
+
+        // Refresh the domain and user names if IDs were changed
+        if (payload.domainId) {
+          await fetchDomainName(domainId);
+        }
+        if (payload.buyerId) {
+          await fetchUserName(buyerId, 'buyer');
+        }
+        if (payload.publisherId) {
+          await fetchUserName(publisherId, 'publisher');
+        }
+
+        // Refresh order lists in background
         fetchOrders();
         fetchAllOrders();
-        alert('Order updated successfully!');
+
+        setIsEditMode(false);
+        setIsSaving(false);
+        toast.success('Order updated successfully!');
       } else {
-        alert('Failed to update order');
+        setIsSaving(false);
+        toast.error('Failed to update order');
       }
     } catch (error) {
       console.error('Error updating order:', error);
-      alert('Error updating order');
+      setIsSaving(false);
+      toast.error('Error updating order');
     }
+  };
+
+  const fetchDomainName = async (id: string) => {
+    if (!id || id.trim() === '') {
+      setDomainName('');
+      return;
+    }
+    try {
+      const response = await fetch(`/api/domains?id=${id}`);
+      const data = await response.json();
+      if (data.success && data.domains && data.domains.length > 0) {
+        setDomainName(data.domains[0].domainName);
+      } else {
+        setDomainName('❌ Domain not found');
+      }
+    } catch (error) {
+      setDomainName('❌ Error fetching domain');
+    }
+  };
+
+  const fetchUserName = async (id: string, type: 'buyer' | 'publisher') => {
+    if (!id || id.trim() === '') {
+      if (type === 'buyer') setBuyerName('');
+      else setPublisherName('');
+      return;
+    }
+    try {
+      const response = await fetch(`/api/users?id=${id}`);
+      const data = await response.json();
+      if (data.success && data.users && data.users.length > 0) {
+        const userName = `${data.users[0].fullName} (${data.users[0].email})`;
+        if (type === 'buyer') setBuyerName(userName);
+        else setPublisherName(userName);
+      } else {
+        if (type === 'buyer') setBuyerName('❌ User not found');
+        else setPublisherName('❌ User not found');
+      }
+    } catch (error) {
+      if (type === 'buyer') setBuyerName('❌ Error fetching user');
+      else setPublisherName('❌ Error fetching user');
+    }
+  };
+
+  const resetFormFields = () => {
+    setEditingOrder(null);
+    setServiceType('');
+    setBuyerId('');
+    setPublisherId('');
+    setDomainId('');
+    setNewStatus('');
+    setBasePrice('');
+    setPlatformFee('');
+    setTotalPrice('');
+    setPublisherEarnings('');
+    setContentWritingFee('');
+    setRequestContentWriting(false);
+    setPaymentMethod('');
+    setPaymentStatus('');
+    setPaddleTransactionId('');
+    setStripeTransactionId('');
+    setStripeSessionId('');
+    setArticleTitle('');
+    setArticleContent('');
+    setSpecialRequirements('');
+    setTargetUrl('');
+    setAnchorText('');
+    setGoogleDocsLink('');
+    setPublishedUrl('');
+    setCompletionNotes('');
+    setAdminRemarks('');
+    setRefundAmount('');
+    setIsEditMode(false);
+    setDomainName('');
+    setBuyerName('');
+    setPublisherName('');
   };
 
   const handleDeleteOrder = async () => {
@@ -225,13 +394,13 @@ export default function OrdersPage() {
         setDeletingOrder(null);
         fetchOrders();
         fetchAllOrders();
-        alert('Order deleted successfully!');
+        toast.success('Order deleted successfully!');
       } else {
-        alert('Failed to delete order');
+        toast.error('Failed to delete order');
       }
     } catch (error) {
       console.error('Error deleting order:', error);
-      alert('Error deleting order');
+      toast.error('Error deleting order');
     } finally {
       setDeleteLoading(false);
     }
@@ -240,6 +409,10 @@ export default function OrdersPage() {
   const statusOptions = [
     { value: 'pending_payment', label: 'Pending Payment' },
     { value: 'paid', label: 'Paid' },
+    { value: 'article_writing', label: 'Article Writing' },
+    { value: 'article_submitted', label: 'Article Submitted' },
+    { value: 'article_revision_requested', label: 'Article Revision Requested' },
+    { value: 'article_approved', label: 'Article Approved' },
     { value: 'accepted', label: 'Accepted' },
     { value: 'rejected', label: 'Rejected' },
     { value: 'in_progress', label: 'In Progress' },
@@ -254,6 +427,7 @@ export default function OrdersPage() {
 
   return (
     <div>
+      <Toaster position="top-right" />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <h1 className="text-lg md:text-3xl font-bold text-gray-900">Order Management</h1>
         <div className="flex items-center gap-2 flex-wrap">
@@ -368,17 +542,44 @@ export default function OrdersPage() {
                         <button
                           onClick={() => {
                             setEditingOrder(order);
+                            // Core fields
+                            setServiceType(order.serviceType);
+                            setBuyerId(order.buyerId);
+                            setPublisherId(order.publisherId);
+                            setDomainId(order.domainId);
                             setNewStatus(order.status);
-                            setAdminRemarks('');
-                            setPublishedUrl(order.publishedUrl || '');
-                            setRefundAmount('');
+                            // Price fields
+                            setBasePrice(order.basePrice.toString());
+                            setPlatformFee(order.platformFee.toString());
+                            setTotalPrice(order.totalPrice.toString());
+                            setPublisherEarnings(order.publisherEarnings.toString());
+                            setContentWritingFee(order.contentWritingFee?.toString() || '');
+                            setRequestContentWriting(order.requestContentWriting || false);
+                            // Payment fields
+                            setPaymentMethod(order.paymentMethod || 'paddle');
+                            setPaymentStatus(order.paymentStatus || 'pending');
+                            setPaddleTransactionId(order.paddleTransactionId || '');
+                            setStripeTransactionId(order.stripeTransactionId || '');
+                            setStripeSessionId(order.stripeSessionId || '');
+                            // Buyer content
                             setArticleTitle(order.articleTitle || '');
                             setArticleContent(order.articleContent || '');
                             setSpecialRequirements(order.specialRequirements || '');
                             setTargetUrl(order.targetUrl || '');
                             setAnchorText(order.anchorText || '');
                             setGoogleDocsLink(order.googleDocsLink || '');
+                            // Seller fields
+                            setPublishedUrl(order.publishedUrl || '');
                             setCompletionNotes(order.completionNotes || '');
+                            // Admin
+                            setAdminRemarks('');
+                            setRefundAmount('');
+                            // Edit mode
+                            setIsEditMode(false);
+                            // Clear fetched names - we'll use the order object data instead
+                            setDomainName('');
+                            setBuyerName('');
+                            setPublisherName('');
                           }}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
                           title="Manage Order"
@@ -406,64 +607,380 @@ export default function OrdersPage() {
       {/* Order Management Modal */}
       {editingOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
               <h3 className="text-lg font-semibold text-gray-900">Manage Order - {editingOrder.orderNumber}</h3>
-              <button
-                onClick={() => setEditingOrder(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {!isEditMode ? (
+                  <>
+                    <button
+                      onClick={async () => {
+                        setIsRefreshing(true);
+                        try {
+                          // Refresh order data from database
+                          const response = await fetch('/api/orders');
+                          const data = await response.json();
+                          if (data.success) {
+                            const refreshedOrder = data.orders.find((o: Order) => o._id === editingOrder._id);
+                            if (refreshedOrder) {
+                              setEditingOrder(refreshedOrder);
+                              // Update all form fields with fresh data
+                              setServiceType(refreshedOrder.serviceType);
+                              setBuyerId(refreshedOrder.buyerId);
+                              setPublisherId(refreshedOrder.publisherId);
+                              setDomainId(refreshedOrder.domainId);
+                              setNewStatus(refreshedOrder.status);
+                              setBasePrice(refreshedOrder.basePrice.toString());
+                              setPlatformFee(refreshedOrder.platformFee.toString());
+                              setTotalPrice(refreshedOrder.totalPrice.toString());
+                              setPublisherEarnings(refreshedOrder.publisherEarnings.toString());
+                              setContentWritingFee(refreshedOrder.contentWritingFee?.toString() || '');
+                              setRequestContentWriting(refreshedOrder.requestContentWriting || false);
+                              setPaymentMethod(refreshedOrder.paymentMethod || 'paddle');
+                              setPaymentStatus(refreshedOrder.paymentStatus || 'pending');
+                              setPaddleTransactionId(refreshedOrder.paddleTransactionId || '');
+                              setStripeTransactionId(refreshedOrder.stripeTransactionId || '');
+                              setStripeSessionId(refreshedOrder.stripeSessionId || '');
+                              setArticleTitle(refreshedOrder.articleTitle || '');
+                              setArticleContent(refreshedOrder.articleContent || '');
+                              setSpecialRequirements(refreshedOrder.specialRequirements || '');
+                              setTargetUrl(refreshedOrder.targetUrl || '');
+                              setAnchorText(refreshedOrder.anchorText || '');
+                              setGoogleDocsLink(refreshedOrder.googleDocsLink || '');
+                              setPublishedUrl(refreshedOrder.publishedUrl || '');
+                              setCompletionNotes(refreshedOrder.completionNotes || '');
+                              setDomainName('');
+                              setBuyerName('');
+                              setPublisherName('');
+                              toast.success('Order data refreshed!');
+                            }
+                          }
+                        } catch (error) {
+                          toast.error('Failed to refresh order data');
+                        } finally {
+                          setIsRefreshing(false);
+                        }
+                      }}
+                      disabled={isRefreshing}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                    <button
+                      onClick={() => setIsEditMode(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                      Edit
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setIsEditMode(false)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+                  >
+                    <X className="w-4 h-4" />
+                    Cancel Edit
+                  </button>
+                )}
+                <button
+                  onClick={resetFormFields}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-6">
-              {/* Order Overview */}
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Order Information</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-sm">
-                    <span className="text-gray-600">Domain:</span>
-                    <span className="font-medium ml-2">{editingOrder.domains?.domainName || 'N/A'}</span>
+              {/* Core Order Details */}
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Core Order Details</h4>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Service Type
+                    </label>
+                    {!isEditMode ? (
+                      <div className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50">
+                        {serviceType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      </div>
+                    ) : (
+                      <select
+                        value={serviceType}
+                        onChange={(e) => setServiceType(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="guest_post">Guest Post</option>
+                        <option value="link_insertion">Link Insertion</option>
+                        <option value="featured_domain">Featured Domain</option>
+                        <option value="press_release">Press Release</option>
+                      </select>
+                    )}
                   </div>
-                  <div className="text-sm">
-                    <span className="text-gray-600">Service:</span>
-                    <span className="font-medium ml-2">{editingOrder.serviceType?.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Domain
+                    </label>
+                    {!isEditMode ? (
+                      <div className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50">
+                        {editingOrder.domains?.domainName || domainName || 'N/A'}
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={domainId}
+                          onChange={(e) => {
+                            setDomainId(e.target.value);
+                            fetchDomainName(e.target.value);
+                          }}
+                          placeholder="Paste domain ID..."
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        {domainName && (
+                          <p className={`mt-1 text-xs ${domainName.includes('❌') ? 'text-red-600' : 'text-green-600'}`}>
+                            {domainName}
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
-                  <div className="text-sm">
-                    <span className="text-gray-600">Total Price:</span>
-                    <span className="font-medium ml-2">${editingOrder.totalPrice?.toFixed(2)}</span>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Buyer
+                    </label>
+                    {!isEditMode ? (
+                      <div className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50">
+                        {editingOrder.buyer ? `${editingOrder.buyer.fullName} (${editingOrder.buyer.email})` : buyerName || 'N/A'}
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={buyerId}
+                          onChange={(e) => {
+                            setBuyerId(e.target.value);
+                            fetchUserName(e.target.value, 'buyer');
+                          }}
+                          placeholder="Paste buyer ID..."
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        {buyerName && (
+                          <p className={`mt-1 text-xs ${buyerName.includes('❌') ? 'text-red-600' : 'text-green-600'}`}>
+                            {buyerName}
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
-                  <div className="text-sm">
-                    <span className="text-gray-600">Status:</span>
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ml-2 ${
-                      editingOrder.status === 'completed' ? 'bg-green-100 text-green-800' :
-                      editingOrder.status === 'paid' || editingOrder.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                      'bg-orange-100 text-orange-800'
-                    }`}>
-                      {editingOrder.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                    </span>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Publisher
+                    </label>
+                    {!isEditMode ? (
+                      <div className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50">
+                        {editingOrder.seller ? `${editingOrder.seller.fullName} (${editingOrder.seller.email})` : publisherName || 'N/A'}
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={publisherId}
+                          onChange={(e) => {
+                            setPublisherId(e.target.value);
+                            fetchUserName(e.target.value, 'publisher');
+                          }}
+                          placeholder="Paste publisher ID..."
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        {publisherName && (
+                          <p className={`mt-1 text-xs ${publisherName.includes('❌') ? 'text-red-600' : 'text-green-600'}`}>
+                            {publisherName}
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
-                  {editingOrder.buyer && (
-                    <div className="text-sm col-span-2">
-                      <span className="text-gray-600">Buyer:</span>
-                      <span className="font-medium ml-2">{editingOrder.buyer.fullName}</span>
-                      <span className="text-gray-500 ml-1">({editingOrder.buyer.email})</span>
-                    </div>
-                  )}
-                  {editingOrder.seller && (
-                    <div className="text-sm col-span-2">
-                      <span className="text-gray-600">Seller:</span>
-                      <span className="font-medium ml-2">{editingOrder.seller.fullName}</span>
-                      <span className="text-gray-500 ml-1">({editingOrder.seller.email})</span>
-                    </div>
-                  )}
-                  {editingOrder.requestContentWriting && (
-                    <div className="text-sm col-span-2">
-                      <span className="text-gray-600">Content Writing:</span>
-                      <span className="font-medium ml-2">Requested (${editingOrder.contentWritingFee?.toFixed(2) || '0.00'})</span>
-                    </div>
-                  )}
+                </div>
+              </div>
+
+              {/* Pricing Information */}
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Pricing Information</h4>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Base Price
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={basePrice}
+                      onChange={(e) => setBasePrice(e.target.value)}
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Platform Fee
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={platformFee}
+                      onChange={(e) => setPlatformFee(e.target.value)}
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Total Price
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={totalPrice}
+                      onChange={(e) => setTotalPrice(e.target.value)}
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Publisher Earnings
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={publisherEarnings}
+                      onChange={(e) => setPublisherEarnings(e.target.value)}
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Content Writing Fee
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={contentWritingFee}
+                      onChange={(e) => setContentWritingFee(e.target.value)}
+                      placeholder="0.00"
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div className="flex items-center pt-6">
+                    <input
+                      type="checkbox"
+                      id="requestContentWriting"
+                      checked={requestContentWriting}
+                      onChange={(e) => setRequestContentWriting(e.target.checked)}
+                      disabled={!isEditMode}
+                      className={`w-4 h-4 text-blue-600 rounded focus:ring-blue-500 ${!isEditMode ? 'cursor-not-allowed' : ''}`}
+                    />
+                    <label htmlFor="requestContentWriting" className="ml-2 text-sm font-medium text-gray-700">
+                      Request Content Writing
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Information */}
+              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 mb-2">Payment Information</h4>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Method
+                    </label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      disabled={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    >
+                      <option value="paddle">Paddle</option>
+                      <option value="stripe">Stripe</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Status
+                    </label>
+                    <select
+                      value={paymentStatus}
+                      onChange={(e) => setPaymentStatus(e.target.value)}
+                      disabled={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="completed">Completed</option>
+                      <option value="failed">Failed</option>
+                      <option value="refunded">Refunded</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Paddle Transaction ID
+                    </label>
+                    <input
+                      type="text"
+                      value={paddleTransactionId}
+                      onChange={(e) => setPaddleTransactionId(e.target.value)}
+                      placeholder="txn_..."
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Stripe Transaction ID
+                    </label>
+                    <input
+                      type="text"
+                      value={stripeTransactionId}
+                      onChange={(e) => setStripeTransactionId(e.target.value)}
+                      placeholder="pi_..."
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Stripe Session ID
+                    </label>
+                    <input
+                      type="text"
+                      value={stripeSessionId}
+                      onChange={(e) => setStripeSessionId(e.target.value)}
+                      placeholder="cs_..."
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -507,7 +1024,8 @@ export default function OrdersPage() {
                       value={targetUrl}
                       onChange={(e) => setTargetUrl(e.target.value)}
                       placeholder="https://example.com/target-page"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     />
                   </div>
 
@@ -520,7 +1038,8 @@ export default function OrdersPage() {
                       value={anchorText}
                       onChange={(e) => setAnchorText(e.target.value)}
                       placeholder="Anchor text for the link..."
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     />
                   </div>
                 </div>
@@ -622,7 +1141,8 @@ export default function OrdersPage() {
                       value={refundAmount}
                       onChange={(e) => setRefundAmount(e.target.value)}
                       placeholder="0.00"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      readOnly={!isEditMode}
+                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     />
                   </div>
                 )}
@@ -711,21 +1231,27 @@ export default function OrdersPage() {
               )}
             </div>
 
-            <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 border-t border-gray-200">
-              <button
-                onClick={() => setEditingOrder(null)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateStatus}
-                disabled={!newStatus || ((newStatus === 'revision_requested' || newStatus === 'rejected') && !adminRemarks)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Update Status
-              </button>
-            </div>
+            {isEditMode && (
+              <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 border-t border-gray-200">
+                <button
+                  onClick={() => setIsEditMode(false)}
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateStatus}
+                  disabled={isSaving || !newStatus || ((newStatus === 'revision_requested' || newStatus === 'rejected') && !adminRemarks)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isSaving && (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

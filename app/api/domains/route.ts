@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
   const status = searchParams.get('status');
   const search = searchParams.get('search');
   const page = parseInt(searchParams.get('page') || '1');
@@ -11,6 +12,21 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * limit;
 
   try {
+    // If ID is provided, fetch single domain by ID
+    if (id) {
+      const { data, error } = await supabase
+        .from('domains')
+        .select('_id, domainName')
+        .eq('_id', id)
+        .single();
+
+      if (error) throw error;
+
+      return NextResponse.json({
+        success: true,
+        domains: data ? [data] : []
+      });
+    }
     // Get stats using RPC (much faster for large datasets)
     const { data: statsData, error: statsError } = await supabase.rpc('get_domain_stats');
     console.log('RPC stats response:', statsData);
