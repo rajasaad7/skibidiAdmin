@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -14,7 +14,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, pendingPayouts: 0 });
+  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, pendingPayouts: 0, newWhiteLabelLeads: 0 });
 
   useEffect(() => {
     setIsNavigating(false);
@@ -63,6 +63,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
     { href: '/payouts', icon: DollarSign, label: 'Payouts' },
     { href: '/indexer', icon: Zap, label: 'Indexer' },
     { href: '/contacts', icon: Mail, label: 'Contact Submissions' },
+    { href: '/white-label-leads', icon: Briefcase, label: 'White Label Leads' },
     { href: '/bugs', icon: Bug, label: 'Bug Reports' },
   ];
 
@@ -136,6 +137,11 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
                   {item.href === '/bugs' && notifications.newBugs > 0 && (
                     <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
                       {notifications.newBugs}
+                    </span>
+                  )}
+                  {item.href === '/white-label-leads' && notifications.newWhiteLabelLeads > 0 && (
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
+                      {notifications.newWhiteLabelLeads}
                     </span>
                   )}
                   {item.href === '/domains' && notifications.pendingDomains > 0 && (

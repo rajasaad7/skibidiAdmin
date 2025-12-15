@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET() {
   try {
     // Fetch all counts in parallel for better performance
-    const [contactsResult, bugsResult, statsResult, payoutsResult] = await Promise.all([
+    const [contactsResult, bugsResult, statsResult, payoutsResult, whiteLabelLeadsResult] = await Promise.all([
       // Get count of new contacts (status = 'new' or 'pending')
       supabase
         .from('contacts')
@@ -24,7 +24,13 @@ export async function GET() {
       supabase
         .from('publisher_payouts')
         .select('*', { count: 'exact', head: true })
-        .in('status', ['pending', 'processing'])
+        .in('status', ['pending', 'processing']),
+
+      // Get count of pending white label leads (status = 'pending')
+      supabase
+        .from('white_label_leads')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending')
     ]);
 
     if (contactsResult.error) {
@@ -39,6 +45,9 @@ export async function GET() {
     if (payoutsResult.error) {
       console.error('Payouts error:', payoutsResult.error);
     }
+    if (whiteLabelLeadsResult.error) {
+      console.error('White label leads error:', whiteLabelLeadsResult.error);
+    }
 
     const stats = statsResult.data || { pending: 0 };
 
@@ -49,6 +58,7 @@ export async function GET() {
         newBugs: bugsResult.count || 0,
         pendingDomains: stats.pending || 0,
         pendingPayouts: payoutsResult.count || 0,
+        newWhiteLabelLeads: whiteLabelLeadsResult.count || 0,
       }
     });
   } catch (error) {
