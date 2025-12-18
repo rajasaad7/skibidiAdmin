@@ -549,11 +549,11 @@ Return JSON only:
 
         // Convert language code to full name
         const langCode = aiResponse.language?.toLowerCase();
-        const languageFullName = langCode ? (languageMap[langCode] || langCode) : null;
+        const languageFullName = langCode ? (languageMap[langCode] || 'Others') : null;
 
         // Convert country code to full name
         const countryCode = aiResponse.country?.toUpperCase();
-        const countryFullName = countryCode ? (countryMap[countryCode] || countryCode) : null;
+        const countryFullName = countryCode ? (countryMap[countryCode] || 'Others') : null;
 
         return {
           domainName,
