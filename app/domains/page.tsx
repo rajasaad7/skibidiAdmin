@@ -127,6 +127,17 @@ export default function DomainsPage() {
     isProcessing: boolean;
   } | null>(null);
   const [showApproveDropdown, setShowApproveDropdown] = useState(false);
+  const [showTrafficModal, setShowTrafficModal] = useState(false);
+  const [trafficProgress, setTrafficProgress] = useState<{
+    domains: Array<{
+      domainId: string;
+      domainName: string;
+      status: 'pending' | 'processing' | 'success' | 'error';
+      organicTraffic?: number;
+      error?: string;
+    }>;
+    isProcessing: boolean;
+  } | null>(null);
   const [showRejectDropdown, setShowRejectDropdown] = useState(false);
 
   // Modal states
@@ -854,6 +865,139 @@ export default function DomainsPage() {
     });
   };
 
+  const handleGetTraffic = async () => {
+    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
+
+    if (selectedDomainsList.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No Selection',
+        message: 'Please select at least one domain to fetch traffic data',
+        type: 'error'
+      });
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Get Domain Traffic',
+      message: `Are you sure you want to fetch traffic data for ${selectedDomainsList.length} selected domain(s) using DataForSEO API? This will use API credits.`,
+      confirmText: 'Fetch Traffic',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        await startTrafficFetchProcess(selectedDomainsList);
+      }
+    });
+  };
+
+  const startTrafficFetchProcess = async (selectedDomainsList: Domain[]) => {
+    // Initialize status for all domains
+    const initialStatus = selectedDomainsList.map(d => ({
+      domainId: d._id,
+      domainName: d.domainName,
+      status: 'pending' as const,
+    }));
+
+    setTrafficProgress({
+      domains: initialStatus,
+      isProcessing: true,
+    });
+    setShowTrafficModal(true);
+
+    let successCount = 0;
+    const allErrors: string[] = [];
+
+    // Process domains one by one
+    for (let i = 0; i < selectedDomainsList.length; i++) {
+      const domain = selectedDomainsList[i];
+
+      // Update status to processing
+      setTrafficProgress(prev => prev ? {
+        ...prev,
+        domains: prev.domains.map((d, idx) =>
+          idx === i ? { ...d, status: 'processing' as const } : d
+        ),
+      } : null);
+
+      try {
+        // Call API for single domain
+        const response = await fetch('/api/domains/get-traffic', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            domainIds: [domain._id]
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.results && data.results.length > 0) {
+          const result = data.results[0];
+
+          if (result.success) {
+            successCount++;
+            // Update status to success
+            setTrafficProgress(prev => prev ? {
+              ...prev,
+              domains: prev.domains.map((d, idx) =>
+                idx === i ? {
+                  ...d,
+                  status: 'success' as const,
+                  organicTraffic: Math.round(result.organicTraffic),
+                } : d
+              ),
+            } : null);
+          } else {
+            allErrors.push(`${domain.domainName}: ${result.error || 'Unknown error'}`);
+            // Update status to error
+            setTrafficProgress(prev => prev ? {
+              ...prev,
+              domains: prev.domains.map((d, idx) =>
+                idx === i ? {
+                  ...d,
+                  status: 'error' as const,
+                  error: result.error || 'Failed to fetch traffic',
+                } : d
+              ),
+            } : null);
+          }
+        } else {
+          allErrors.push(`${domain.domainName}: ${data.error || 'Failed to fetch traffic'}`);
+          setTrafficProgress(prev => prev ? {
+            ...prev,
+            domains: prev.domains.map((d, idx) =>
+              idx === i ? {
+                ...d,
+                status: 'error' as const,
+                error: data.error || 'Failed to fetch traffic',
+              } : d
+            ),
+          } : null);
+        }
+      } catch (error: any) {
+        console.error(`Error fetching traffic for ${domain.domainName}:`, error);
+        allErrors.push(`${domain.domainName}: ${error.message}`);
+        setTrafficProgress(prev => prev ? {
+          ...prev,
+          domains: prev.domains.map((d, idx) =>
+            idx === i ? {
+              ...d,
+              status: 'error' as const,
+              error: error.message,
+            } : d
+          ),
+        } : null);
+      }
+    }
+
+    // Mark processing as complete
+    setTrafficProgress(prev => prev ? { ...prev, isProcessing: false } : null);
+
+    // Refresh domains list
+    fetchDomains();
+    setSelectedDomains(new Set());
+  };
+
   const startCategorizationProcess = async (selectedDomainsList: Domain[]) => {
 
     // Initialize live status for all domains
@@ -1490,6 +1634,132 @@ export default function DomainsPage() {
         </div>
       )}
 
+      {/* Traffic Fetch Modal */}
+      {showTrafficModal && trafficProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col">
+            <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <RefreshCw className={`w-6 h-6 text-green-600 ${trafficProgress.isProcessing ? 'animate-spin' : ''}`} />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Fetching Domain Traffic
+                </h3>
+              </div>
+              {!trafficProgress.isProcessing && (
+                <button
+                  onClick={() => {
+                    setShowTrafficModal(false);
+                    setTrafficProgress(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {/* Progress Summary */}
+              <div className="flex-shrink-0 px-6 pt-6 pb-4">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-600 mb-1">Total</div>
+                    <div className="text-xl font-bold text-gray-900">{trafficProgress.domains.length}</div>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-3">
+                    <div className="text-xs text-yellow-600 mb-1">Pending</div>
+                    <div className="text-xl font-bold text-yellow-900">
+                      {trafficProgress.domains.filter(d => d.status === 'pending').length}
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="text-xs text-blue-600 mb-1">Processing</div>
+                    <div className="text-xl font-bold text-blue-900">
+                      {trafficProgress.domains.filter(d => d.status === 'processing').length}
+                    </div>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="text-xs text-green-600 mb-1">Success</div>
+                    <div className="text-xl font-bold text-green-900">
+                      {trafficProgress.domains.filter(d => d.status === 'success').length}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable Table */}
+              <div className="flex-1 overflow-auto px-6 pb-6">
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Domain</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Organic Traffic</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {trafficProgress.domains.map((domain, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm">
+                            {domain.status === 'pending' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-700">
+                                <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                Pending
+                              </span>
+                            )}
+                            {domain.status === 'processing' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-blue-100 text-blue-700">
+                                <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></div>
+                                Processing
+                              </span>
+                            )}
+                            {domain.status === 'success' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-700">
+                                <CheckCircle className="w-3 h-3" />
+                                Success
+                              </span>
+                            )}
+                            {domain.status === 'error' && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded bg-red-100 text-red-700">
+                                <XCircle className="w-3 h-3" />
+                                Error
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{domain.domainName}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {domain.organicTraffic !== undefined ? (
+                              <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">
+                                {domain.organicTraffic.toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-red-600">
+                            {domain.error || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {!trafficProgress.isProcessing && (
+                <div className="flex-shrink-0 px-6 pb-6">
+                  <div className="text-center bg-green-50 border border-green-200 rounded-lg p-3">
+                    <p className="text-sm text-green-600 font-medium">✓ Traffic fetch complete!</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Categorization Result Modal */}
       {categorizationResult && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1920,6 +2190,13 @@ export default function DomainsPage() {
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Auto-Categorize
+              </button>
+              <button
+                onClick={handleGetTraffic}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Get Traffic
               </button>
             </>
           )}
