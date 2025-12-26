@@ -4,7 +4,7 @@ import { fetchSheetData, findDomainInSheet } from '@/lib/google-sheets-service';
 
 export async function POST(request: NextRequest) {
   try {
-    const { domainIds } = await request.json();
+    const { domainIds, updateFields } = await request.json();
 
     if (!domainIds || !Array.isArray(domainIds) || domainIds.length === 0) {
       return NextResponse.json(
@@ -12,6 +12,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Default to updating all fields if not specified
+    const fieldsToUpdate = updateFields || { dr: true, da: true, spamScore: true, traffic: true };
 
     // Get sheet configuration from environment variables
     const spreadsheetId = process.env.GOOGLE_SHEET_ID || '1ActmOwcI92VRa-LH4KGu4FehzSPcApTuPNp_9k7bdXk';
@@ -53,15 +56,29 @@ export async function POST(request: NextRequest) {
         const sheetMatch = findDomainInSheet(domainName, sheetData);
 
         if (sheetMatch) {
-          // Update domain with sheet data
+          // Update domain with sheet data (only selected fields)
           const updateData: any = {
             updatedAt: new Date().toISOString(),
           };
 
-          if (sheetMatch.dr !== null) updateData.domainRating = sheetMatch.dr;
-          if (sheetMatch.da !== null) updateData.domainAuthority = sheetMatch.da;
-          if (sheetMatch.spamScore !== null) updateData.spamScore = sheetMatch.spamScore;
-          if (sheetMatch.traffic !== null) updateData.organicTraffic = sheetMatch.traffic;
+          const updatedFields: any = {};
+
+          if (fieldsToUpdate.dr && sheetMatch.dr !== null) {
+            updateData.domainRating = sheetMatch.dr;
+            updatedFields.dr = sheetMatch.dr;
+          }
+          if (fieldsToUpdate.da && sheetMatch.da !== null) {
+            updateData.domainAuthority = sheetMatch.da;
+            updatedFields.da = sheetMatch.da;
+          }
+          if (fieldsToUpdate.spamScore && sheetMatch.spamScore !== null) {
+            updateData.spamScore = sheetMatch.spamScore;
+            updatedFields.spamScore = sheetMatch.spamScore;
+          }
+          if (fieldsToUpdate.traffic && sheetMatch.traffic !== null) {
+            updateData.organicTraffic = sheetMatch.traffic;
+            updatedFields.traffic = sheetMatch.traffic;
+          }
 
           const { error: updateError } = await supabase
             .from('domains')
@@ -80,12 +97,7 @@ export async function POST(request: NextRequest) {
               domainId: domain._id,
               domainName,
               success: true,
-              updated: {
-                dr: sheetMatch.dr,
-                da: sheetMatch.da,
-                spamScore: sheetMatch.spamScore,
-                traffic: sheetMatch.traffic,
-              },
+              updated: updatedFields,
             });
           }
         } else {

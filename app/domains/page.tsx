@@ -150,6 +150,13 @@ export default function DomainsPage() {
     }>;
     isProcessing: boolean;
   } | null>(null);
+  const [showSheetUpdateConfirmModal, setShowSheetUpdateConfirmModal] = useState(false);
+  const [sheetUpdateFields, setSheetUpdateFields] = useState({
+    dr: true,
+    da: true,
+    spamScore: true,
+    traffic: true
+  });
   const [showRejectDropdown, setShowRejectDropdown] = useState(false);
 
   // Modal states
@@ -1023,16 +1030,14 @@ export default function DomainsPage() {
       return;
     }
 
-    setConfirmModal({
-      isOpen: true,
-      title: 'Update from Google Sheet',
-      message: `Are you sure you want to update DR, DA, Spam Score, and Traffic for ${selectedDomainsList.length} selected domain(s) from the Google Sheet?`,
-      confirmText: 'Update from Sheet',
-      cancelText: 'Cancel',
-      onConfirm: async () => {
-        await startSheetUpdateProcess(selectedDomainsList);
-      }
-    });
+    // Show custom confirmation modal with checkboxes
+    setShowSheetUpdateConfirmModal(true);
+  };
+
+  const confirmSheetUpdate = async () => {
+    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
+    setShowSheetUpdateConfirmModal(false);
+    await startSheetUpdateProcess(selectedDomainsList);
   };
 
   const startSheetUpdateProcess = async (selectedDomainsList: Domain[]) => {
@@ -1050,12 +1055,13 @@ export default function DomainsPage() {
     setShowSheetUpdateModal(true);
 
     try {
-      // Call API with all domain IDs at once
+      // Call API with all domain IDs at once and selected fields
       const response = await fetch('/api/domains/update-from-sheet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          domainIds: selectedDomainsList.map(d => d._id)
+          domainIds: selectedDomainsList.map(d => d._id),
+          updateFields: sheetUpdateFields
         })
       });
 
@@ -2931,6 +2937,89 @@ export default function DomainsPage() {
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition"
               >
                 {confirmModal.confirmText || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sheet Update Confirmation Modal with Checkboxes */}
+      {showSheetUpdateConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">Update from Google Sheet</h3>
+            <p className="text-gray-600 mb-4">
+              Select which fields you want to update for {domains.filter(d => selectedDomains.has(d._id)).length} selected domain(s):
+            </p>
+
+            {/* Checkboxes for fields */}
+            <div className="space-y-3 mb-6">
+              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sheetUpdateFields.dr}
+                  onChange={(e) => setSheetUpdateFields({ ...sheetUpdateFields, dr: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Domain Rating (DR)</div>
+                  <div className="text-xs text-gray-500">Update DR from sheet</div>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sheetUpdateFields.da}
+                  onChange={(e) => setSheetUpdateFields({ ...sheetUpdateFields, da: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Domain Authority (DA)</div>
+                  <div className="text-xs text-gray-500">Update DA from sheet</div>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sheetUpdateFields.spamScore}
+                  onChange={(e) => setSheetUpdateFields({ ...sheetUpdateFields, spamScore: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Spam Score</div>
+                  <div className="text-xs text-gray-500">Update spam score from sheet</div>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sheetUpdateFields.traffic}
+                  onChange={(e) => setSheetUpdateFields({ ...sheetUpdateFields, traffic: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-gray-900">Traffic</div>
+                  <div className="text-xs text-gray-500">Update organic traffic from sheet</div>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowSheetUpdateConfirmModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSheetUpdate}
+                disabled={!sheetUpdateFields.dr && !sheetUpdateFields.da && !sheetUpdateFields.spamScore && !sheetUpdateFields.traffic}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                Update from Sheet
               </button>
             </div>
           </div>
