@@ -127,6 +127,7 @@ export default function DomainsPage() {
     isProcessing: boolean;
   } | null>(null);
   const [showApproveDropdown, setShowApproveDropdown] = useState(false);
+  const [showMoreActionsDropdown, setShowMoreActionsDropdown] = useState(false);
   const [showTrafficModal, setShowTrafficModal] = useState(false);
   const [trafficProgress, setTrafficProgress] = useState<{
     domains: Array<{
@@ -2430,27 +2431,61 @@ export default function DomainsPage() {
                 <Download className="w-3.5 h-3.5" />
                 Export
               </button>
-              <button
-                onClick={handleAutoCategorize}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Auto-Categorize
-              </button>
-              <button
-                onClick={handleGetTraffic}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Get Traffic
-              </button>
-              <button
-                onClick={handleUpdateFromSheet}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition"
-              >
-                <Download className="w-3.5 h-3.5" />
-                Update from Sheet
-              </button>
+
+              {/* More Actions Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowMoreActionsDropdown(!showMoreActionsDropdown)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 transition"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  More Actions
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {showMoreActionsDropdown && (
+                  <div className="absolute top-full mt-1 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[200px]">
+                    <button
+                      onClick={() => {
+                        handleAutoCategorize();
+                        setShowMoreActionsDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs hover:bg-gray-50 transition first:rounded-t-lg flex items-center gap-2"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <div>
+                        <div className="font-medium text-gray-900">Auto-Categorize</div>
+                        <div className="text-gray-500 text-[10px]">Use AI to categorize domains</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleGetTraffic();
+                        setShowMoreActionsDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs hover:bg-gray-50 transition border-t border-gray-100 flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 text-green-600" />
+                      <div>
+                        <div className="font-medium text-gray-900">Get Traffic</div>
+                        <div className="text-gray-500 text-[10px]">Fetch from DataForSEO API</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleUpdateFromSheet();
+                        setShowMoreActionsDropdown(false);
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs hover:bg-gray-50 transition border-t border-gray-100 last:rounded-b-lg flex items-center gap-2"
+                    >
+                      <Download className="w-3.5 h-3.5 text-blue-600" />
+                      <div>
+                        <div className="font-medium text-gray-900">Update from Sheet</div>
+                        <div className="text-gray-500 text-[10px]">Sync DR, DA, SS from Google Sheet</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
           <button
