@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit, Sparkles, ChevronDown } from 'lucide-react';
+import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit, Sparkles, ChevronDown, Upload } from 'lucide-react';
 import OfferingModal from '@/components/OfferingModal';
 import DomainEditModal from '@/components/DomainEditModal';
 
@@ -755,6 +755,45 @@ export default function DomainsPage() {
         message: 'Error exporting domains',
         type: 'error'
       });
+    }
+  };
+
+  const uploadNADomainsToSheet = async () => {
+    try {
+      setUploadingCSV(true);
+
+      const response = await fetch('/api/domains/upload-na-to-sheet', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Upload Failed',
+          message: data.error || 'Failed to upload N/A domains to sheet',
+          type: 'error'
+        });
+        return;
+      }
+
+      setAlertModal({
+        isOpen: true,
+        title: 'Upload Successful',
+        message: `Successfully uploaded ${data.count} N/A domains to Google Sheet (rows ${data.startRow}-${data.endRow})`,
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('Error uploading N/A domains to sheet:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error uploading N/A domains to sheet',
+        type: 'error'
+      });
+    } finally {
+      setUploadingCSV(false);
     }
   };
 
@@ -2257,6 +2296,14 @@ export default function DomainsPage() {
           >
             <Download className="w-4 h-4" />
             Export N/A Domains
+          </button>
+          <button
+            onClick={uploadNADomainsToSheet}
+            disabled={uploadingCSV}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Upload className="w-4 h-4" />
+            {uploadingCSV ? 'Uploading...' : 'Upload N/A to Sheet'}
           </button>
         </div>
       </div>
