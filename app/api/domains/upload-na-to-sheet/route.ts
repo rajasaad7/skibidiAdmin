@@ -51,24 +51,65 @@ export async function POST() {
 
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // First, get current data to find the last row
-    const getResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `${sheetName}!A:A`,
-    });
+    // Get existing domains using batchGet for better performance with large datasets
+    const BATCH_SIZE = 10000;
+    const existingDomains = new Set<string>();
+    let currentRow = 1;
+    let hasMoreData = true;
 
-    const existingRows = getResponse.data.values || [];
-    const lastRow = existingRows.length;
-    const startRow = lastRow + 1;
+    // Read sheet in batches to handle 20K+ domains efficiently
+    while (hasMoreData) {
+      const endRow = currentRow + BATCH_SIZE - 1;
+      const range = `${sheetName}!A${currentRow}:A${endRow}`;
+
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+      });
+
+      const rows = response.data.values || [];
+
+      if (rows.length === 0) {
+        hasMoreData = false;
+        break;
+      }
+
+      // Add domains to Set for O(1) lookup
+      rows.forEach(row => {
+        if (row[0]) {
+          existingDomains.add(row[0]);
+        }
+      });
+
+      // If we got fewer rows than BATCH_SIZE, we've reached the end
+      if (rows.length < BATCH_SIZE) {
+        hasMoreData = false;
+      } else {
+        currentRow = endRow + 1;
+      }
+    }
+
+    // Filter out domains that already exist - O(n) operation with Set
+    const newNADomains = naDomains.filter(
+      domain => !existingDomains.has(domain.domainName)
+    );
+
+    if (newNADomains.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'All N/A domains already exist in the sheet'
+      }, { status: 400 });
+    }
 
     // Prepare domain names to append (only domain names in column A)
-    const values = naDomains.map(domain => [domain.domainName]);
+    const values = newNADomains.map(domain => [domain.domainName]);
 
-    // Append domain names at the end
+    // Append domain names at the end (Google Sheets will auto-find the next empty row)
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${sheetName}!A${startRow}`,
+      range: `${sheetName}!A:A`,
       valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: {
         values,
       },
@@ -76,10 +117,10 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: `Successfully uploaded ${naDomains.length} N/A domains to sheet`,
-      count: naDomains.length,
-      startRow,
-      endRow: startRow + naDomains.length - 1
+      message: `Successfully uploaded ${newNADomains.length} new N/A domains to sheet (${naDomains.length - newNADomains.length} already existed)`,
+      count: newNADomains.length,
+      totalNADomains: naDomains.length,
+      alreadyExisted: naDomains.length - newNADomains.length
     });
   } catch (error: any) {
     console.error('Error uploading N/A domains to sheet:', error);
