@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { checkAuth, getAdminEmail } from '@/lib/auth';
+import { checkAuth, getAdminEmail, getUserRole } from '@/lib/auth';
 import Sidebar from '@/components/Sidebar';
 
 export default async function IndexerLayout({
@@ -14,10 +14,11 @@ export default async function IndexerLayout({
   }
 
   const adminEmail = await getAdminEmail();
+  const userRole = await getUserRole();
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar adminEmail={adminEmail} />
+      <Sidebar adminEmail={adminEmail} userRole={userRole} />
       <main className="flex-1 p-8 md:ml-64 overflow-auto">
         {children}
       </main>

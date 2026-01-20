@@ -7,9 +7,10 @@ import { useState, useEffect } from 'react';
 
 interface SidebarProps {
   adminEmail?: string;
+  userRole?: 'super_admin' | 'colleague';
 }
 
-export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: SidebarProps) {
+export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole = 'super_admin' }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
@@ -53,19 +54,22 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io' }: Sidebar
     router.refresh();
   };
 
-  const navItems = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/activity', icon: Activity, label: "Today's Activity" },
-    { href: '/users', icon: Users, label: 'Users' },
-    { href: '/press-releases', icon: FileText, label: 'Press Releases' },
-    { href: '/domains', icon: Globe, label: 'Domains' },
-    { href: '/orders', icon: ShoppingCart, label: 'Orders' },
-    { href: '/payouts', icon: DollarSign, label: 'Payouts' },
-    { href: '/indexer', icon: Zap, label: 'Indexer' },
-    { href: '/contacts', icon: Mail, label: 'Contact Submissions' },
-    { href: '/white-label-leads', icon: Briefcase, label: 'White Label Leads' },
-    { href: '/bugs', icon: Bug, label: 'Bug Reports' },
+  const allNavItems = [
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['super_admin'] },
+    { href: '/activity', icon: Activity, label: "Today's Activity", roles: ['super_admin', 'colleague'] },
+    { href: '/users', icon: Users, label: 'Users', roles: ['super_admin'] },
+    { href: '/press-releases', icon: FileText, label: 'Press Releases', roles: ['super_admin', 'colleague'] },
+    { href: '/domains', icon: Globe, label: 'Domains', roles: ['super_admin', 'colleague'] },
+    { href: '/orders', icon: ShoppingCart, label: 'Orders', roles: ['super_admin'] },
+    { href: '/payouts', icon: DollarSign, label: 'Payouts', roles: ['super_admin'] },
+    { href: '/indexer', icon: Zap, label: 'Indexer', roles: ['super_admin'] },
+    { href: '/contacts', icon: Mail, label: 'Contact Submissions', roles: ['super_admin', 'colleague'] },
+    { href: '/white-label-leads', icon: Briefcase, label: 'White Label Leads', roles: ['super_admin', 'colleague'] },
+    { href: '/bugs', icon: Bug, label: 'Bug Reports', roles: ['super_admin'] },
   ];
+
+  // Filter nav items based on user role
+  const navItems = allNavItems.filter(item => item.roles.includes(userRole));
 
   return (
     <>
