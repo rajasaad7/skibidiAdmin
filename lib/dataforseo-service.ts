@@ -254,6 +254,7 @@ async function fetchDomainRankOverview(
               organic_etv: organicEtv,
               location_code: item.location_code,
               language_code: item.language_code,
+              location_name: '',
             };
           }
         }
