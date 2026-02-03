@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { getDomainTraffic } from '@/lib/dataforseo-service';
+import { getDomainTrafficWithLocation } from '@/lib/dataforseo-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,21 +44,28 @@ export async function POST(request: NextRequest) {
     // Process each domain
     for (const domain of domains) {
       try {
-        // Get traffic from DataForSEO
-        const trafficResult = await getDomainTraffic(
+        // Get traffic from DataForSEO with location data
+        const trafficResult = await getDomainTrafficWithLocation(
           domain.domainName || domain.url,
           apiLogin,
           apiPassword
         );
 
-        // Update the domain with traffic data
+        // Update the domain with traffic data, country, and language
         if (trafficResult.organicTraffic !== null) {
+          const updateData: any = {
+            "organicTraffic": Math.round(trafficResult.organicTraffic),
+            updatedAt: new Date().toISOString(),
+          };
+
+          // Add country if available
+          if (trafficResult.country) {
+            updateData.country = trafficResult.country;
+          }
+
           const { error: updateError } = await supabase
             .from('domains')
-            .update({
-              "organicTraffic": Math.round(trafficResult.organicTraffic),
-              updatedAt: new Date().toISOString(),
-            })
+            .update(updateData)
             .eq('_id', domain._id);
 
           if (updateError) {
@@ -74,6 +81,7 @@ export async function POST(request: NextRequest) {
               domainName: domain.domainName || domain.url,
               success: true,
               organicTraffic: trafficResult.organicTraffic,
+              country: trafficResult.country,
             });
           }
         } else {

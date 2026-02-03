@@ -135,6 +135,7 @@ export default function DomainsPage() {
       domainName: string;
       status: 'pending' | 'processing' | 'success' | 'error';
       organicTraffic?: number;
+      country?: string;
       error?: string;
     }>;
     isProcessing: boolean;
@@ -1002,6 +1003,7 @@ export default function DomainsPage() {
                   ...d,
                   status: 'success' as const,
                   organicTraffic: Math.round(result.organicTraffic),
+                  country: result.country,
                 } : d
               ),
             } : null);
@@ -1844,6 +1846,7 @@ export default function DomainsPage() {
                         <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Status</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Domain</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Organic Traffic</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Country</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Error</th>
                       </tr>
                     </thead>
@@ -1881,6 +1884,15 @@ export default function DomainsPage() {
                             {domain.organicTraffic !== undefined ? (
                               <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-green-100 text-green-700">
                                 {domain.organicTraffic.toLocaleString()}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700">
+                            {domain.country ? (
+                              <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-700">
+                                {domain.country}
                               </span>
                             ) : (
                               <span className="text-gray-400">-</span>

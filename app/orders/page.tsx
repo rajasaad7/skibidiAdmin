@@ -176,6 +176,37 @@ export default function OrdersPage() {
     });
   };
 
+  // Calculate TAT remaining
+  const calculateTATRemaining = (order: Order) => {
+    if (!order.deadlineAt) return null;
+
+    const now = new Date();
+    const deadline = new Date(order.deadlineAt);
+    const diffMs = deadline.getTime() - now.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    const remainingHours = diffHours % 24;
+
+    const isOverdue = diffMs < 0;
+    const isUrgent = !isOverdue && diffHours < 24; // Less than 24 hours remaining
+    const isWarning = !isOverdue && diffHours >= 24 && diffHours < 48; // 24-48 hours
+
+    return {
+      isOverdue,
+      isUrgent,
+      isWarning,
+      diffMs,
+      diffHours: Math.abs(diffHours),
+      diffDays: Math.abs(diffDays),
+      remainingHours: Math.abs(remainingHours),
+      formattedTime: isOverdue
+        ? `${Math.abs(diffDays)} days ${Math.abs(remainingHours)} hours overdue`
+        : diffDays > 0
+          ? `${diffDays} days ${remainingHours} hours remaining`
+          : `${Math.abs(diffHours)} hours remaining`
+    };
+  };
+
   const getStatusCount = (status: string) => {
     let filteredOrders = allOrders;
 
@@ -809,6 +840,65 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
+
+              {/* TAT (Turnaround Time) Status */}
+              {editingOrder.deadlineAt && !editingOrder.completedAt && (() => {
+                const tatInfo = calculateTATRemaining(editingOrder);
+                if (!tatInfo) return null;
+
+                const bgColor = tatInfo.isOverdue
+                  ? 'bg-red-50'
+                  : tatInfo.isUrgent
+                    ? 'bg-orange-50'
+                    : tatInfo.isWarning
+                      ? 'bg-yellow-50'
+                      : 'bg-green-50';
+
+                const textColor = tatInfo.isOverdue
+                  ? 'text-red-900'
+                  : tatInfo.isUrgent
+                    ? 'text-orange-900'
+                    : tatInfo.isWarning
+                      ? 'text-yellow-900'
+                      : 'text-green-900';
+
+                const badgeColor = tatInfo.isOverdue
+                  ? 'bg-red-100 text-red-800'
+                  : tatInfo.isUrgent
+                    ? 'bg-orange-100 text-orange-800'
+                    : tatInfo.isWarning
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-green-100 text-green-800';
+
+                return (
+                  <div className={`${bgColor} rounded-lg p-4 border-2 ${tatInfo.isOverdue ? 'border-red-300' : tatInfo.isUrgent ? 'border-orange-300' : tatInfo.isWarning ? 'border-yellow-300' : 'border-green-300'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className={`text-sm font-semibold ${textColor}`}>
+                        {tatInfo.isOverdue ? '⚠️ TAT OVERDUE' : '⏰ TAT Remaining'}
+                      </h4>
+                      <span className={`px-2 py-1 text-xs font-bold rounded ${badgeColor}`}>
+                        {tatInfo.isOverdue ? 'OVERDUE' : tatInfo.isUrgent ? 'URGENT' : tatInfo.isWarning ? 'WARNING' : 'ON TRACK'}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className={`text-sm font-medium ${textColor}`}>Deadline:</span>
+                        <span className={`text-sm ${textColor}`}>
+                          {new Date(editingOrder.deadlineAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className={`text-sm font-medium ${textColor}`}>
+                          {tatInfo.isOverdue ? 'Overdue by:' : 'Time Remaining:'}
+                        </span>
+                        <span className={`text-lg font-bold ${textColor}`}>
+                          {tatInfo.formattedTime}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Pricing Information */}
               <div className="border border-gray-200 rounded-lg p-4 space-y-3">
