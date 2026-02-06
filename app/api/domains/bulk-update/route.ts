@@ -33,6 +33,7 @@ export async function POST(request: Request) {
       if (metrics.domainRating !== undefined) updateData.domainRating = metrics.domainRating;
       if (metrics.domainAuthority !== undefined) updateData.domainAuthority = metrics.domainAuthority;
       if (metrics.organicTraffic !== undefined) updateData.organicTraffic = metrics.organicTraffic;
+      if (metrics.country !== undefined) updateData.country = metrics.country;
       if (metrics.spamScore !== undefined) updateData.spamScore = metrics.spamScore;
 
       if (Object.keys(updateData).length === 0) {

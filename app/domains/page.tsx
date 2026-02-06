@@ -94,7 +94,7 @@ export default function DomainsPage() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'file' | 'paste'>('file');
   const [pastedData, setPastedData] = useState<string>('');
-  const [parsedRows, setParsedRows] = useState<{ domainName: string; dr: string; da: string; traffic: string; spamScore: string }[]>([]);
+  const [parsedRows, setParsedRows] = useState<{ domainName: string; dr: string; da: string; traffic: string; country: string; spamScore: string }[]>([]);
   const [hoveredOffering, setHoveredOffering] = useState<{ domainId: string; index: number } | null>(null);
   const [editingDomain, setEditingDomain] = useState<Domain | null>(null);
   const [publisherPages, setPublisherPages] = useState<Record<string, number>>({});
@@ -799,6 +799,7 @@ export default function DomainsPage() {
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
     const text = e.clipboardData.getData('text');
     setPastedData(text);
 
@@ -813,7 +814,8 @@ export default function DomainsPage() {
         dr: values[1] || '',
         da: values[2] || '',
         spamScore: values[3] || '',
-        traffic: values[4] || ''
+        traffic: values[4] || '',
+        country: values[5] || ''
       };
     });
 
@@ -837,6 +839,9 @@ export default function DomainsPage() {
         }
         if (row.traffic && row.traffic.trim() !== '' && !isNaN(Number(row.traffic))) {
           update.organicTraffic = Number(row.traffic);
+        }
+        if (row.country && row.country.trim() !== '') {
+          update.country = row.country.trim();
         }
         if (row.spamScore && row.spamScore.trim() !== '' && !isNaN(Number(row.spamScore))) {
           update.spamScore = Number(row.spamScore);
@@ -1532,7 +1537,7 @@ export default function DomainsPage() {
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                     <p className="text-blue-900 text-sm font-medium mb-2">How to use:</p>
                     <ol className="text-blue-700 text-sm space-y-1 list-decimal list-inside">
-                      <li>Copy data from Google Sheets or Excel in this order: <strong>Domain Name, DR, DA, Spam Score, Traffic</strong></li>
+                      <li>Copy data from Google Sheets or Excel in this order: <strong>Domain Name, DR, DA, Spam Score, Traffic, Country</strong></li>
                       <li>Click in the text area below and paste (Ctrl+V / Cmd+V)</li>
                       <li>Review the parsed data in the table</li>
                       <li>Click "Update Domains" to apply changes</li>
@@ -1558,6 +1563,7 @@ export default function DomainsPage() {
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">DA</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Spam Score</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Traffic</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Country</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
@@ -1568,6 +1574,7 @@ export default function DomainsPage() {
                                 <td className="px-4 py-2 text-sm text-gray-600">{row.da}</td>
                                 <td className="px-4 py-2 text-sm text-gray-600">{row.spamScore}</td>
                                 <td className="px-4 py-2 text-sm text-gray-600">{row.traffic}</td>
+                                <td className="px-4 py-2 text-sm text-gray-600">{row.country}</td>
                               </tr>
                             ))}
                           </tbody>
