@@ -20,17 +20,6 @@ interface Domain {
   organicTraffic: number;
   referringDomains: number;
   spamScore: number;
-  guestPostPrice: number | null;
-  linkInsertionPrice: number | null;
-  contentWritingIncluded: boolean;
-  contentWritingPrice: number | null;
-  minWordCount: number;
-  maxWordCount: number;
-  turnaroundTimeDays: number;
-  contentRequirements: string;
-  prohibitedNiches: string[] | null;
-  allowedLinkTypes: string[] | null;
-  maxOutboundLinks: number;
   verificationStatus: string;
   isActive: boolean;
   isFeatured: boolean;
@@ -65,17 +54,6 @@ export default function DomainEditModal({ domain, onClose, onSave }: DomainEditM
       organicTraffic: domain.organicTraffic,
       referringDomains: domain.referringDomains,
       spamScore: domain.spamScore,
-      guestPostPrice: domain.guestPostPrice,
-      linkInsertionPrice: domain.linkInsertionPrice,
-      contentWritingIncluded: domain.contentWritingIncluded,
-      contentWritingPrice: domain.contentWritingPrice,
-      minWordCount: domain.minWordCount,
-      maxWordCount: domain.maxWordCount,
-      turnaroundTimeDays: domain.turnaroundTimeDays,
-      contentRequirements: domain.contentRequirements,
-      prohibitedNiches: domain.prohibitedNiches,
-      allowedLinkTypes: domain.allowedLinkTypes,
-      maxOutboundLinks: domain.maxOutboundLinks,
       verificationStatus: domain.verificationStatus,
       isActive: domain.isActive,
       isFeatured: domain.isFeatured,
@@ -348,119 +326,6 @@ export default function DomainEditModal({ domain, onClose, onSave }: DomainEditM
             </div>
           </div>
 
-          {/* Pricing */}
-          <div>
-            <h4 className="text-md font-semibold text-gray-900 mb-3">Pricing</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Guest Post Price ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.guestPostPrice || ''}
-                  onChange={(e) => handleChange('guestPostPrice', e.target.value ? parseFloat(e.target.value) : null)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Link Insertion Price ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.linkInsertionPrice || ''}
-                  onChange={(e) => handleChange('linkInsertionPrice', e.target.value ? parseFloat(e.target.value) : null)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Content Writing Price ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.contentWritingPrice || ''}
-                  onChange={(e) => handleChange('contentWritingPrice', e.target.value ? parseFloat(e.target.value) : null)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="0"
-                />
-              </div>
-            </div>
-
-            <div className="mt-2">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formData.contentWritingIncluded || false}
-                  onChange={(e) => handleChange('contentWritingIncluded', e.target.checked)}
-                  className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Content Writing Included</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Content Requirements */}
-          <div>
-            <h4 className="text-md font-semibold text-gray-900 mb-3">Content Requirements</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Min Word Count</label>
-                <input
-                  type="number"
-                  value={formData.minWordCount || 500}
-                  onChange={(e) => handleChange('minWordCount', parseInt(e.target.value) || 500)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Max Word Count</label>
-                <input
-                  type="number"
-                  value={formData.maxWordCount || 2000}
-                  onChange={(e) => handleChange('maxWordCount', parseInt(e.target.value) || 2000)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Turnaround Days</label>
-                <input
-                  type="number"
-                  value={formData.turnaroundTimeDays || 7}
-                  onChange={(e) => handleChange('turnaroundTimeDays', parseInt(e.target.value) || 7)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="1"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Max Outbound Links</label>
-                <input
-                  type="number"
-                  value={formData.maxOutboundLinks || 2}
-                  onChange={(e) => handleChange('maxOutboundLinks', parseInt(e.target.value) || 2)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min="1"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Content Requirements</label>
-              <textarea
-                value={formData.contentRequirements || ''}
-                onChange={(e) => handleChange('contentRequirements', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                rows={3}
-              />
-            </div>
-          </div>
 
           {/* Action Buttons */}
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">

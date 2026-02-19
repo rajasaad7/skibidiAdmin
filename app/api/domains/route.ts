@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
     const { data: statsData, error: statsError } = await supabase.rpc('get_domain_stats');
     console.log('RPC stats response:', statsData);
     console.log('RPC stats error:', statsError);
-    const stats = statsData || {
+    // RPC returns an array with one row, so we need to get the first element
+    const statsRow = statsData && statsData.length > 0 ? statsData[0] : null;
+    const stats = statsRow || {
       total: 0,
       pending: 0,
       verified: 0,
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
       domainsWithReseller: 0
     };
 
-    // Build query
+    // Build query - join with domain_offerings table
     let query = supabase
       .from('domains')
       .select(`
@@ -48,10 +50,6 @@ export async function GET(request: NextRequest) {
         domainName,
         url,
         verificationStatus,
-        guestPostPrice,
-        linkInsertionPrice,
-        contentWritingPrice,
-        contentWritingIncluded,
         domainRating,
         domainAuthority,
         pageAuthority,
@@ -64,21 +62,39 @@ export async function GET(request: NextRequest) {
         description,
         language,
         country,
-        minWordCount,
-        maxWordCount,
-        turnaroundTimeDays,
-        contentRequirements,
-        prohibitedNiches,
-        allowedLinkTypes,
-        maxOutboundLinks,
         domainType,
         createdAt,
         userId,
         isActive,
         isFeatured,
-        publisherOfferings,
         editHistory,
-        domain_categories(name)
+        domain_categories(name),
+        domain_offerings(
+          _id,
+          "domainType",
+          "publisherId",
+          "guestPostEnabled",
+          "linkInsertionEnabled",
+          "contentWritingEnabled",
+          "guestPostPrice",
+          "linkInsertionPrice",
+          "contentWritingIncluded",
+          "contentWritingPrice",
+          "minWordCount",
+          "maxWordCount",
+          "turnaroundTimeDays",
+          "contentRequirements",
+          "prohibitedNiches",
+          "allowedLinkTypes",
+          "maxOutboundLinks",
+          "examplePosts",
+          "searchEngineIndexed",
+          "isActive",
+          "adminApproved",
+          "adminRejectionReason",
+          "createdAt",
+          "updatedAt"
+        )
       `);
 
     // Apply search filter if provided
@@ -104,7 +120,7 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== 'all') {
       filteredDomains = filteredDomains.filter(domain => {
-        const offerings = domain.publisherOfferings || [];
+        const offerings = domain.domain_offerings || [];
 
         if (status === 'pending') {
           return offerings.some((o: any) => o.adminApproved === null || o.adminApproved === undefined || o.adminApproved === '');
@@ -126,7 +142,7 @@ export async function GET(request: NextRequest) {
     // Collect all unique publisher IDs from current page
     const publisherIds = new Set<string>();
     (data || []).forEach(domain => {
-      domain.publisherOfferings?.forEach((offering: any) => {
+      domain.domain_offerings?.forEach((offering: any) => {
         if (offering.publisherId) {
           publisherIds.add(offering.publisherId);
         }
@@ -144,13 +160,23 @@ export async function GET(request: NextRequest) {
       (usersData || []).map(user => [user._id, user])
     );
 
-    // Enrich publisherOfferings with user data using the map
+    // Enrich domain_offerings with user data using the map
     const enrichedDomains = (data || []).map(domain => {
-      if (!domain.publisherOfferings || domain.publisherOfferings.length === 0) {
-        return domain;
+      if (!domain.domain_offerings || domain.domain_offerings.length === 0) {
+        return {
+          ...domain,
+          publisherOfferings: [] // Keep backward compatibility
+        };
       }
 
-      const enrichedOfferings = domain.publisherOfferings.map((offering: any) => {
+      // IMPORTANT: Sort offerings by createdAt to match the order used in approve-offering API
+      const sortedOfferings = [...domain.domain_offerings].sort((a: any, b: any) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateA - dateB; // Ascending order (oldest first)
+      });
+
+      const enrichedOfferings = sortedOfferings.map((offering: any) => {
         if (!offering.publisherId) {
           return offering;
         }
@@ -165,7 +191,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...domain,
-        publisherOfferings: enrichedOfferings
+        publisherOfferings: enrichedOfferings // Map to old name for backward compatibility
       };
     });
 

@@ -5,36 +5,31 @@ export async function POST(request: NextRequest) {
   try {
     const { domainId, offeringIndex, reason } = await request.json();
 
-    // Get current domain data
-    const { data: domainData, error: fetchError } = await supabase
-      .from('domains')
-      .select('publisherOfferings')
-      .eq('_id', domainId)
-      .single();
+    // Get offerings for this domain
+    const { data: offerings, error: fetchError } = await supabase
+      .from('domain_offerings')
+      .select('_id')
+      .eq('"domainId"', domainId)
+      .order('"createdAt"', { ascending: true });
 
-    if (fetchError || !domainData) {
-      throw new Error('Domain not found');
+    if (fetchError || !offerings) {
+      throw new Error('Domain offerings not found');
     }
 
-    // Update the specific offering
-    const publisherOfferings = domainData.publisherOfferings || [];
-    if (offeringIndex >= publisherOfferings.length) {
+    if (offeringIndex >= offerings.length) {
       throw new Error('Invalid offering index');
     }
 
-    publisherOfferings[offeringIndex].adminApproved = false;
-    if (reason) {
-      publisherOfferings[offeringIndex].adminRejectionReason = reason;
-    }
-
-    // Update the domain
+    // Update the specific offering in domain_offerings table
+    const offeringId = offerings[offeringIndex]._id;
     const { error: updateError } = await supabase
-      .from('domains')
+      .from('domain_offerings')
       .update({
-        publisherOfferings,
-        updatedAt: new Date().toISOString()
+        adminApproved: false,
+        adminRejectionReason: reason || null,
+        "updatedAt": new Date().toISOString()
       })
-      .eq('_id', domainId);
+      .eq('_id', offeringId);
 
     if (updateError) throw updateError;
 

@@ -47,17 +47,6 @@ interface Domain {
   organicTraffic: number;
   referringDomains: number;
   spamScore: number;
-  guestPostPrice: number | null;
-  linkInsertionPrice: number | null;
-  contentWritingIncluded: boolean;
-  contentWritingPrice: number | null;
-  minWordCount: number;
-  maxWordCount: number;
-  turnaroundTimeDays: number;
-  contentRequirements: string;
-  prohibitedNiches: string[] | null;
-  allowedLinkTypes: string[] | null;
-  maxOutboundLinks: number;
   verificationStatus: string;
   isActive: boolean;
   isFeatured: boolean;

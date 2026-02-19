@@ -49,7 +49,9 @@ export async function GET() {
       console.error('White label leads error:', whiteLabelLeadsResult.error);
     }
 
-    const stats = statsResult.data || { pending: 0 };
+    // RPC returns an array with one row, so we need to get the first element
+    const statsRow = statsResult.data && statsResult.data.length > 0 ? statsResult.data[0] : null;
+    const stats = statsRow || { pending: 0 };
 
     return NextResponse.json({
       success: true,

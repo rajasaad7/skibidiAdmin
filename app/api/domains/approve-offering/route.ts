@@ -5,44 +5,47 @@ export async function POST(request: NextRequest) {
   try {
     const { domainId, offeringIndex } = await request.json();
 
-    // Get current domain data
-    const { data: domainData, error: fetchError } = await supabase
-      .from('domains')
-      .select('publisherOfferings')
-      .eq('_id', domainId)
-      .single();
+    // Get offerings for this domain
+    const { data: offerings, error: fetchError } = await supabase
+      .from('domain_offerings')
+      .select('_id')
+      .eq('"domainId"', domainId)
+      .order('"createdAt"', { ascending: true });
 
-    if (fetchError || !domainData) {
-      throw new Error('Domain not found');
+    if (fetchError) {
+      throw new Error(`Fetch error: ${fetchError.message}`);
     }
 
-    // Update the specific offering
-    const publisherOfferings = domainData.publisherOfferings || [];
-    if (offeringIndex >= publisherOfferings.length) {
+    if (!offerings || offerings.length === 0) {
+      throw new Error('Domain offerings not found');
+    }
+
+    if (offeringIndex >= offerings.length) {
       throw new Error('Invalid offering index');
     }
 
-    publisherOfferings[offeringIndex].adminApproved = true;
-    if (publisherOfferings[offeringIndex].adminRejectionReason) {
-      delete publisherOfferings[offeringIndex].adminRejectionReason;
+    // Update the specific offering in domain_offerings table
+    const offeringId = offerings[offeringIndex]._id;
+
+    const { data: updateData, error: updateError } = await supabase
+      .from('domain_offerings')
+      .update({
+        adminApproved: true,
+        adminRejectionReason: null,
+        "updatedAt": new Date().toISOString()
+      })
+      .eq('_id', offeringId)
+      .select();
+
+    if (updateError) {
+      throw updateError;
     }
 
-    // Update the domain
-    const { error: updateError } = await supabase
-      .from('domains')
-      .update({
-        publisherOfferings,
-        updatedAt: new Date().toISOString()
-      })
-      .eq('_id', domainId);
-
-    if (updateError) throw updateError;
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    return NextResponse.json({ success: true, data: updateData });
+  } catch (error: any) {
     console.error('Error approving offering:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to approve offering' },
+      { success: false, error: error.message || 'Failed to approve offering' },
       { status: 500 }
     );
   }
