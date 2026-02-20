@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+/**
+ * Mark payout as paid
+ * NOTE: The balance was already deducted when the payout request was created,
+ * so we only need to update the payout status here. No balance changes needed.
+ */
 export async function POST(request: NextRequest) {
   try {
     const { payoutId, transactionId, notes } = await request.json();

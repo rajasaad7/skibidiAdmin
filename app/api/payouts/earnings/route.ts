@@ -1,36 +1,36 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+/**
+ * Get publisher earnings from the new balance ledger system
+ * This replaces the old method of calculating from orders
+ */
 export async function GET() {
   try {
-    // Get all completed orders with publisher info (exclude featured_domain)
-    const { data: completedOrders, error: completedError } = await supabase
-      .from('marketplace_orders')
+    // Get all publisher balances with user information
+    const { data: balances, error: balancesError } = await supabase
+      .from('publisher_balances')
       .select(`
-        _id,
-        publisherId,
-        totalPrice,
-        "publisherEarnings",
-        status,
-        serviceType,
-        seller:users!publisherId(
+        "userId",
+        "currentBalance",
+        "totalEarned",
+        "totalWithdrawn",
+        "totalFees",
+        user:users!"userId"(
           _id,
           fullName,
           email
         )
-      `)
-      .eq('status', 'completed')
-      .neq('serviceType', 'featured_domain');
+      `);
 
-    if (completedError) throw completedError;
+    if (balancesError) throw balancesError;
 
-    // Get all pending/in-progress orders (exclude featured_domain)
+    // Get pending orders count per publisher
     const { data: pendingOrders, error: pendingError } = await supabase
       .from('marketplace_orders')
       .select(`
         _id,
-        publisherId,
-        totalPrice,
+        "publisherId",
         "publisherEarnings",
         status,
         serviceType
@@ -40,89 +40,64 @@ export async function GET() {
 
     if (pendingError) throw pendingError;
 
-    // Get all completed payout requests
-    const { data: completedPayouts, error: payoutsError } = await supabase
-      .from('publisher_payouts')
-      .select('userId, amount')
-      .eq('status', 'completed');
+    // Get completed orders count per publisher
+    const { data: completedOrders, error: completedError } = await supabase
+      .from('marketplace_orders')
+      .select(`
+        _id,
+        "publisherId",
+        status,
+        serviceType
+      `)
+      .eq('status', 'completed')
+      .neq('serviceType', 'featured_domain');
 
-    if (payoutsError) {
-      console.error('Error fetching payouts:', payoutsError);
-    }
+    if (completedError) throw completedError;
 
-    // Aggregate earnings by publisher
-    const publisherMap = new Map<string, {
-      _id: string;
-      fullName: string;
-      email: string;
-      totalEarnings: number;
-      pendingPayout: number;
-      paidOut: number;
-      completedOrders: number;
-      pendingOrders: number;
-    }>();
+    // Count pending and completed orders by publisher
+    const pendingOrdersMap = new Map<string, number>();
+    const completedOrdersMap = new Map<string, number>();
 
-    // Process completed orders
-    (completedOrders || []).forEach((order: any) => {
-      if (!order.publisherId || !order.seller) return;
-
-      const existing = publisherMap.get(order.publisherId);
-      // Publisher gets the publisherEarnings amount
-      const publisherShare = Number(order.publisherEarnings || 0);
-
-      if (existing) {
-        existing.totalEarnings += publisherShare;
-        existing.completedOrders += 1;
-      } else {
-        publisherMap.set(order.publisherId, {
-          _id: order.seller._id,
-          fullName: order.seller.fullName,
-          email: order.seller.email,
-          totalEarnings: publisherShare,
-          pendingPayout: 0,
-          paidOut: 0,
-          completedOrders: 1,
-          pendingOrders: 0
-        });
-      }
-    });
-
-    // Process pending orders
     (pendingOrders || []).forEach((order: any) => {
       if (!order.publisherId) return;
-
-      const existing = publisherMap.get(order.publisherId);
-
-      if (existing) {
-        existing.pendingOrders += 1;
-      }
+      pendingOrdersMap.set(order.publisherId, (pendingOrdersMap.get(order.publisherId) || 0) + 1);
     });
 
-    // Calculate paid out amounts from completed payouts
-    const paidOutMap = new Map<string, number>();
-    (completedPayouts || []).forEach((payout: any) => {
-      const current = paidOutMap.get(payout.userId) || 0;
-      paidOutMap.set(payout.userId, current + Number(payout.amount || 0));
+    (completedOrders || []).forEach((order: any) => {
+      if (!order.publisherId) return;
+      completedOrdersMap.set(order.publisherId, (completedOrdersMap.get(order.publisherId) || 0) + 1);
     });
 
-    // Calculate pending payouts
-    publisherMap.forEach((publisher, publisherId) => {
-      const paidOut = paidOutMap.get(publisherId) || 0;
-      publisher.paidOut = paidOut;
-      publisher.pendingPayout = publisher.totalEarnings - paidOut;
-    });
+    // Map balances to publisher info
+    const publishers = (balances || [])
+      .map((balance: any) => {
+        if (!balance.user) return null;
 
-    // Convert to array and sort by pending payout (descending)
-    const publishers = Array.from(publisherMap.values())
-      .filter(p => p.completedOrders > 0)
-      .sort((a, b) => b.pendingPayout - a.pendingPayout);
+        return {
+          _id: balance.userId,
+          fullName: balance.user.fullName,
+          email: balance.user.email,
+          totalEarnings: Number(balance.totalEarned || 0),
+          pendingPayout: Number(balance.currentBalance || 0), // Available balance = pending payout
+          paidOut: Number(balance.totalWithdrawn || 0),
+          completedOrders: completedOrdersMap.get(balance.userId) || 0,
+          pendingOrders: pendingOrdersMap.get(balance.userId) || 0
+        };
+      })
+      .filter((p: any) => p !== null)
+      .sort((a: any, b: any) => b.pendingPayout - a.pendingPayout);
+
+    // Calculate pending orders value
+    const pendingOrdersValue = (pendingOrders || []).reduce((sum: number, o: any) =>
+      sum + Number(o.publisherEarnings || 0), 0
+    );
 
     // Calculate stats
     const stats = {
-      totalOwed: publishers.reduce((sum, p) => sum + p.pendingPayout, 0),
-      totalPaid: publishers.reduce((sum, p) => sum + p.paidOut, 0),
+      totalOwed: publishers.reduce((sum: number, p: any) => sum + p.pendingPayout, 0),
+      totalPaid: publishers.reduce((sum: number, p: any) => sum + p.paidOut, 0),
       publishersCount: publishers.length,
-      pendingOrdersValue: (pendingOrders || []).reduce((sum: number, o: any) => sum + Number(o.publisherEarnings || 0), 0)
+      pendingOrdersValue
     };
 
     return NextResponse.json({
