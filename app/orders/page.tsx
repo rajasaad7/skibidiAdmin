@@ -68,10 +68,12 @@ interface Order {
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [serviceTypeFilters, setServiceTypeFilters] = useState<string[]>(['guest_post', 'link_insertion', 'featured_domain']);
+  const [stats, setStats] = useState({ all: 0, paid: 0, in_progress: 0, submitted: 0, completed: 0, cancelled: 0, refunded: 0 });
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // Core order fields
@@ -128,28 +130,28 @@ export default function OrdersPage() {
   // Refresh loading
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchAllOrders = async () => {
+  const fetchStats = async () => {
     try {
-      const response = await fetch('/api/orders');
+      const response = await fetch('/api/orders/stats');
       const data = await response.json();
       if (data.success) {
-        setAllOrders(data.orders);
+        setStats(data.stats);
       }
     } catch (error) {
-      console.error('Error fetching all orders:', error);
+      console.error('Error fetching stats:', error);
     }
   };
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const url = filter === 'all'
-        ? '/api/orders'
-        : `/api/orders?status=${filter}`;
+      const statusParam = filter === 'all' ? '' : `&status=${filter}`;
+      const url = `/api/orders?page=${page}${statusParam}`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.success) {
         setOrders(data.orders);
+        setPagination(data.pagination);
       }
     } catch (error) {
       console.error('Error fetching orders:', error);
@@ -159,12 +161,13 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    fetchAllOrders();
-  }, []);
+    setPage(1); // Reset to page 1 when filter changes
+  }, [filter]);
 
   useEffect(() => {
+    fetchStats();
     fetchOrders();
-  }, [filter]);
+  }, [filter, page]);
 
   const toggleServiceTypeFilter = (type: string) => {
     setServiceTypeFilters(prev => {
@@ -208,15 +211,14 @@ export default function OrdersPage() {
   };
 
   const getStatusCount = (status: string) => {
-    let filteredOrders = allOrders;
-
-    // Apply service type filter
-    if (serviceTypeFilters.length > 0) {
-      filteredOrders = filteredOrders.filter(order => serviceTypeFilters.includes(order.serviceType));
-    }
-
-    if (status === 'all') return filteredOrders.length;
-    return filteredOrders.filter(order => order.status === status).length;
+    if (status === 'all') return stats.all;
+    if (status === 'paid') return stats.paid;
+    if (status === 'in_progress') return stats.in_progress;
+    if (status === 'submitted') return stats.submitted;
+    if (status === 'completed') return stats.completed;
+    if (status === 'cancelled') return stats.cancelled;
+    if (status === 'refunded') return stats.refunded;
+    return 0;
   };
 
   const getFilteredOrders = () => {
@@ -320,8 +322,8 @@ export default function OrdersPage() {
         }
 
         // Refresh order lists in background
+        fetchStats();
         fetchOrders();
-        fetchAllOrders();
 
         setIsEditMode(false);
         setIsSaving(false);
@@ -423,8 +425,8 @@ export default function OrdersPage() {
 
       if (response.ok) {
         setDeletingOrder(null);
+        fetchStats();
         fetchOrders();
-        fetchAllOrders();
         toast.success('Order deleted successfully!');
       } else {
         toast.error('Failed to delete order');
@@ -477,8 +479,8 @@ export default function OrdersPage() {
           ))}
           <button
             onClick={() => {
+              fetchStats();
               fetchOrders();
-              fetchAllOrders();
             }}
             className="flex items-center gap-2 px-3 py-1 md:px-4 md:py-2 text-xs md:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
           >
@@ -633,6 +635,60 @@ export default function OrdersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-700">
+              Showing <span className="font-medium">{((page - 1) * pagination.limit) + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(page * pagination.limit, pagination.total)}</span> of{' '}
+              <span className="font-medium">{pagination.total}</span> orders
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (pagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (page <= 3) {
+                    pageNum = i + 1;
+                  } else if (page >= pagination.totalPages - 2) {
+                    pageNum = pagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = page - 2 + i;
+                  }
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setPage(pageNum)}
+                      className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                        page === pageNum
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                disabled={page === pagination.totalPages}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Order Management Modal */}

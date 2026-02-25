@@ -79,6 +79,7 @@ export default function DomainsPage() {
   const [viewingOffering, setViewingOffering] = useState<{ domain: Domain; offering: PublisherOffering; index: number } | null>(null);
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set());
   const [uploadingCSV, setUploadingCSV] = useState(false);
+  const [syncingFromSheet, setSyncingFromSheet] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ success: boolean; updatedCount: number; errors?: string[]; totalProcessed: number } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'file' | 'paste'>('file');
@@ -745,6 +746,50 @@ export default function DomainsPage() {
         message: 'Error exporting domains',
         type: 'error'
       });
+    }
+  };
+
+  const syncNADomainsFromSheet = async () => {
+    try {
+      setSyncingFromSheet(true);
+
+      const response = await fetch('/api/domains/sync-na-from-sheet', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Sync Failed',
+          message: data.error || 'Failed to sync N/A domains from sheet',
+          type: 'error'
+        });
+        return;
+      }
+
+      const { summary } = data;
+
+      setAlertModal({
+        isOpen: true,
+        title: 'Sync Complete',
+        message: `Successfully synced ${summary.updated} domains from sheet. ${summary.failed} failed.`,
+        type: 'success'
+      });
+
+      // Refresh domains to show updated stats
+      fetchDomains();
+    } catch (error) {
+      console.error('Error syncing from sheet:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error syncing domains from sheet',
+        type: 'error'
+      });
+    } finally {
+      setSyncingFromSheet(false);
     }
   };
 
@@ -2312,6 +2357,14 @@ export default function DomainsPage() {
           >
             <Upload className="w-4 h-4" />
             {uploadingCSV ? 'Uploading...' : 'Upload N/A to Sheet'}
+          </button>
+          <button
+            onClick={syncNADomainsFromSheet}
+            disabled={syncingFromSheet}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncingFromSheet ? 'animate-spin' : ''}`} />
+            {syncingFromSheet ? 'Syncing...' : 'Sync N/A from Sheet'}
           </button>
         </div>
       </div>

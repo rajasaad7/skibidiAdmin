@@ -4,6 +4,7 @@ interface SheetDomainData {
   da: number | null;
   spamScore: number | null;
   traffic: number | null;
+  country: string | null;
 }
 
 /**
@@ -15,7 +16,7 @@ export async function fetchSheetData(
 ): Promise<SheetDomainData[]> {
   try {
     // Use Google Sheets API without authentication (public sheet)
-    const range = `${sheetName}!A2:E`; // Skip header row, get all data
+    const range = `${sheetName}!A2:F`; // Skip header row, get all data including country
     const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&range=${encodeURIComponent(range)}`;
 
     const response = await fetch(url);
@@ -40,6 +41,7 @@ export async function fetchSheetData(
         const da = cleanValues[2] ? parseFloat(cleanValues[2]) : null;
         const spamScore = cleanValues[3] ? parseFloat(cleanValues[3]) : null;
         const traffic = cleanValues[4] ? parseFloat(cleanValues[4]) : null;
+        const country = cleanValues[5] ? cleanValues[5].trim() : null;
 
         results.push({
           domainName,
@@ -47,6 +49,7 @@ export async function fetchSheetData(
           da: da !== null && !isNaN(da) ? Math.round(da) : null,
           spamScore: spamScore !== null && !isNaN(spamScore) ? Math.round(spamScore) : null,
           traffic: traffic !== null && !isNaN(traffic) ? Math.round(traffic) : null,
+          country: country && country.length > 0 ? country : null,
         });
       }
     }

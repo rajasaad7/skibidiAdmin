@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
       domainsWithReseller: 0
     };
 
-    // Build query - join with domain_offerings table
+    // Build base query with filters BEFORE fetching data
     let query = supabase
       .from('domains')
       .select(`
@@ -68,58 +68,94 @@ export async function GET(request: NextRequest) {
         isActive,
         isFeatured,
         editHistory,
-        domain_categories(name),
-        domain_offerings(
-          _id,
-          "domainType",
-          "publisherId",
-          "guestPostEnabled",
-          "linkInsertionEnabled",
-          "contentWritingEnabled",
-          "guestPostPrice",
-          "linkInsertionPrice",
-          "contentWritingIncluded",
-          "contentWritingPrice",
-          "minWordCount",
-          "maxWordCount",
-          "turnaroundTimeDays",
-          "contentRequirements",
-          "prohibitedNiches",
-          "allowedLinkTypes",
-          "maxOutboundLinks",
-          "examplePosts",
-          "searchEngineIndexed",
-          "isActive",
-          "adminApproved",
-          "adminRejectionReason",
-          "createdAt",
-          "updatedAt"
-        )
+        domain_categories(name)
       `);
 
-    // Apply search filter if provided
+    // Apply search filter
     if (search && search.trim()) {
       query = query.ilike('domainName', `%${search.trim()}%`);
     }
 
+    // Apply uncategorized filter
+    if (uncategorized) {
+      query = query.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
+    }
+
     query = query.order('createdAt', { ascending: false });
 
-    const { data: allDomains, error } = await query;
+    // Get total count for filtered results (without offerings join)
+    const { count: totalCount, error: countError } = await supabase
+      .from('domains')
+      .select('_id', { count: 'exact', head: true })
+      .ilike('domainName', search?.trim() ? `%${search.trim()}%` : '%')
+      .eq('categoryId', uncategorized ? 'b396a018-9721-4aff-b554-5acd46b098d3' : 'categoryId');
+
+    if (countError && countError.code !== 'PGRST116') {
+      console.error('Count error:', countError);
+    }
+
+    // Apply pagination at database level
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: paginatedDomains, error } = await query;
 
     if (error) throw error;
 
-    // Filter domains based on status BEFORE pagination
-    let filteredDomains = allDomains || [];
+    // Now fetch offerings only for the paginated results
+    const domainIds = (paginatedDomains || []).map(d => d._id);
 
-    // Apply uncategorized filter if requested
-    if (uncategorized) {
-      filteredDomains = filteredDomains.filter(domain =>
-        domain.categoryId === 'b396a018-9721-4aff-b554-5acd46b098d3'
-      );
-    }
+    const { data: offeringsData } = await supabase
+      .from('domain_offerings')
+      .select(`
+        _id,
+        "domainId",
+        "domainType",
+        "publisherId",
+        "guestPostEnabled",
+        "linkInsertionEnabled",
+        "contentWritingEnabled",
+        "guestPostPrice",
+        "linkInsertionPrice",
+        "contentWritingIncluded",
+        "contentWritingPrice",
+        "minWordCount",
+        "maxWordCount",
+        "turnaroundTimeDays",
+        "contentRequirements",
+        "prohibitedNiches",
+        "allowedLinkTypes",
+        "maxOutboundLinks",
+        "examplePosts",
+        "searchEngineIndexed",
+        "isActive",
+        "adminApproved",
+        "adminRejectionReason",
+        "createdAt",
+        "updatedAt"
+      `)
+      .in('"domainId"', domainIds)
+      .order('createdAt', { ascending: true });
 
+    // Create a map of offerings by domainId
+    const offeringsMap = new Map<string, any[]>();
+    (offeringsData || []).forEach(offering => {
+      const domainId = offering.domainId;
+      if (!offeringsMap.has(domainId)) {
+        offeringsMap.set(domainId, []);
+      }
+      offeringsMap.get(domainId)!.push(offering);
+    });
+
+    // Attach offerings to domains
+    const data = (paginatedDomains || []).map(domain => ({
+      ...domain,
+      domain_offerings: offeringsMap.get(domain._id) || []
+    }));
+
+    // Filter by offering status if needed
+    let filteredData = data;
     if (status && status !== 'all') {
-      filteredDomains = filteredDomains.filter(domain => {
+      filteredData = data.filter(domain => {
         const offerings = domain.domain_offerings || [];
 
         if (status === 'pending') {
@@ -133,15 +169,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get total count for filtered results
-    const totalCount = filteredDomains.length;
-
-    // Apply pagination to filtered results
-    const data = filteredDomains.slice(offset, offset + limit);
-
-    // Collect all unique publisher IDs from current page
+    // Collect all unique publisher IDs from filtered data
     const publisherIds = new Set<string>();
-    (data || []).forEach(domain => {
+    (filteredData || []).forEach(domain => {
       domain.domain_offerings?.forEach((offering: any) => {
         if (offering.publisherId) {
           publisherIds.add(offering.publisherId);
@@ -149,34 +179,27 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Fetch all users in one query
-    const { data: usersData } = await supabase
+    // Fetch all users in one query (only for paginated results)
+    const { data: usersData } = publisherIds.size > 0 ? await supabase
       .from('users')
       .select('_id, fullName, email')
-      .in('_id', Array.from(publisherIds));
+      .in('_id', Array.from(publisherIds)) : { data: [] };
 
     // Create a map for quick lookup
     const usersMap = new Map(
       (usersData || []).map(user => [user._id, user])
     );
 
-    // Enrich domain_offerings with user data using the map
-    const enrichedDomains = (data || []).map(domain => {
+    // Enrich domain_offerings with user data
+    const enrichedDomains = (filteredData || []).map(domain => {
       if (!domain.domain_offerings || domain.domain_offerings.length === 0) {
         return {
           ...domain,
-          publisherOfferings: [] // Keep backward compatibility
+          publisherOfferings: []
         };
       }
 
-      // IMPORTANT: Sort offerings by createdAt to match the order used in approve-offering API
-      const sortedOfferings = [...domain.domain_offerings].sort((a: any, b: any) => {
-        const dateA = new Date(a.createdAt).getTime();
-        const dateB = new Date(b.createdAt).getTime();
-        return dateA - dateB; // Ascending order (oldest first)
-      });
-
-      const enrichedOfferings = sortedOfferings.map((offering: any) => {
+      const enrichedOfferings = domain.domain_offerings.map((offering: any) => {
         if (!offering.publisherId) {
           return offering;
         }
@@ -191,7 +214,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...domain,
-        publisherOfferings: enrichedOfferings // Map to old name for backward compatibility
+        publisherOfferings: enrichedOfferings
       };
     });
 
@@ -207,17 +230,18 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Calculate uncategorized count from all domains
-    const uncategorizedCount = (allDomains || []).filter(domain =>
-      domain.categoryId === 'b396a018-9721-4aff-b554-5acd46b098d3'
-    ).length;
+    // Get uncategorized count (efficient query)
+    const { count: uncategorizedCount } = await supabase
+      .from('domains')
+      .select('_id', { count: 'exact', head: true })
+      .eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
 
     return NextResponse.json({
       success: true,
       domains: domainsWithCounts,
       stats: {
         ...stats,
-        uncategorized: uncategorizedCount
+        uncategorized: uncategorizedCount || 0
       },
       pagination: {
         page,
