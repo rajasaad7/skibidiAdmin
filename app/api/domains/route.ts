@@ -81,14 +81,66 @@ export async function GET(request: NextRequest) {
       query = query.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
     }
 
+    // If filtering by offering status, we need to get domain IDs first that match the status
+    let filteredDomainIds: string[] | null = null;
+    if (status && status !== 'all') {
+      let offeringsQuery = supabase
+        .from('domain_offerings')
+        .select('"domainId"');
+
+      if (status === 'pending') {
+        offeringsQuery = offeringsQuery.is('"adminApproved"', null);
+      } else if (status === 'verified') {
+        offeringsQuery = offeringsQuery.eq('"adminApproved"', true);
+      } else if (status === 'rejected') {
+        offeringsQuery = offeringsQuery.eq('"adminApproved"', false);
+      }
+
+      const { data: offeringsDomainIds } = await offeringsQuery;
+      filteredDomainIds = offeringsDomainIds ? [...new Set(offeringsDomainIds.map(o => o.domainId))] : [];
+
+      // Apply domain ID filter to main query
+      if (filteredDomainIds.length > 0) {
+        query = query.in('_id', filteredDomainIds);
+      } else {
+        // No domains match the status filter, return empty
+        return NextResponse.json({
+          success: true,
+          domains: [],
+          stats: {
+            ...stats,
+            uncategorized: 0
+          },
+          pagination: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0
+          }
+        });
+      }
+    }
+
     query = query.order('createdAt', { ascending: false });
 
-    // Get total count for filtered results (without offerings join)
-    const { count: totalCount, error: countError } = await supabase
+    // Get total count for filtered results
+    let countQuery = supabase
       .from('domains')
-      .select('_id', { count: 'exact', head: true })
-      .ilike('domainName', search?.trim() ? `%${search.trim()}%` : '%')
-      .eq('categoryId', uncategorized ? 'b396a018-9721-4aff-b554-5acd46b098d3' : 'categoryId');
+      .select('_id', { count: 'exact', head: true });
+
+    if (search && search.trim()) {
+      countQuery = countQuery.ilike('domainName', `%${search.trim()}%`);
+    }
+
+    if (uncategorized) {
+      countQuery = countQuery.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
+    }
+
+    if (filteredDomainIds !== null && filteredDomainIds.length > 0) {
+      countQuery = countQuery.in('_id', filteredDomainIds);
+    }
+
+    const { count: totalCount, error: countError } = await countQuery;
 
     if (countError && countError.code !== 'PGRST116') {
       console.error('Count error:', countError);
@@ -147,27 +199,10 @@ export async function GET(request: NextRequest) {
     });
 
     // Attach offerings to domains
-    const data = (paginatedDomains || []).map(domain => ({
+    const filteredData = (paginatedDomains || []).map(domain => ({
       ...domain,
       domain_offerings: offeringsMap.get(domain._id) || []
     }));
-
-    // Filter by offering status if needed
-    let filteredData = data;
-    if (status && status !== 'all') {
-      filteredData = data.filter(domain => {
-        const offerings = domain.domain_offerings || [];
-
-        if (status === 'pending') {
-          return offerings.some((o: any) => o.adminApproved === null || o.adminApproved === undefined || o.adminApproved === '');
-        } else if (status === 'verified') {
-          return offerings.some((o: any) => o.adminApproved === true);
-        } else if (status === 'rejected') {
-          return offerings.some((o: any) => o.adminApproved === false);
-        }
-        return true;
-      });
-    }
 
     // Collect all unique publisher IDs from filtered data
     const publisherIds = new Set<string>();
