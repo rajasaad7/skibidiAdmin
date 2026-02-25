@@ -18,13 +18,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch N/A domains from database (domains with missing DR, DA, Traffic, SpamScore, or Country)
-    const { data: naDomains, error: fetchError } = await supabase
+    // Fetch N/A domains from database (domains where ALL 4 metrics are 0 or null)
+    const { data: allDomains, error: fetchError } = await supabase
       .from('domains')
-      .select('_id, "domainName", url, "domainRating", "domainAuthority", "organicTraffic", "spamScore", country')
-      .or('"domainRating".is.null,"domainAuthority".is.null,"organicTraffic".is.null,"spamScore".is.null,country.is.null');
+      .select('_id, "domainName", url, "domainRating", "domainAuthority", "organicTraffic", "spamScore", country');
 
     if (fetchError) throw fetchError;
+
+    // Filter domains where ALL 4 metrics are 0 or null (true N/A domains)
+    const naDomains = allDomains?.filter(d =>
+      (d.domainRating === null || d.domainRating === 0) &&
+      (d.domainAuthority === null || d.domainAuthority === 0) &&
+      (d.organicTraffic === null || d.organicTraffic === 0) &&
+      (d.spamScore === null || d.spamScore === 0)
+    ) || [];
+
+    console.log('Found N/A domains:', naDomains?.length || 0);
+    console.log('Sheet data rows:', sheetData.length);
 
     if (!naDomains || naDomains.length === 0) {
       return NextResponse.json({
@@ -44,14 +54,19 @@ export async function POST(request: NextRequest) {
         // Find matching data in sheet
         const sheetMatch = findDomainInSheet(domainName, sheetData);
 
+        console.log(`Processing domain: ${domainName}, Found in sheet: ${!!sheetMatch}`);
+
         if (sheetMatch) {
-          // Check if all required fields are present in the sheet
+          console.log(`Sheet data for ${domainName}:`, sheetMatch);
+
+          // Check if all 4 metric fields are present in the sheet
           const hasAllFields =
             sheetMatch.dr !== null &&
             sheetMatch.da !== null &&
             sheetMatch.traffic !== null &&
-            sheetMatch.spamScore !== null &&
-            sheetMatch.country !== null;
+            sheetMatch.spamScore !== null;
+
+          console.log(`Has all fields: ${hasAllFields}`);
 
           if (hasAllFields) {
             // Update domain with complete sheet data
@@ -95,7 +110,7 @@ export async function POST(request: NextRequest) {
               domainId: domain._id,
               domainName,
               success: false,
-              error: 'Incomplete data in sheet (missing one or more: DR, DA, Traffic, SpamScore, Country)',
+              error: 'Incomplete data in sheet (missing one or more: DR, DA, Traffic, SpamScore)',
             });
           }
         } else {
