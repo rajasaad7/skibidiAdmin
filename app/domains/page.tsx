@@ -922,15 +922,24 @@ export default function DomainsPage() {
 
       const { updatedCount, updates, errors } = data;
 
+      // Combine successful updates and errors for display
+      const allDetails = [
+        ...(updates?.length > 0 ? updates.map((d: any) => ({
+          domain: d.domain,
+          stats: `✓ DR ${d.updated?.dr || 'N/A'} | DA ${d.updated?.da || 'N/A'} | Traffic ${d.updated?.traffic || 'N/A'} | SS ${d.updated?.spamScore || 'N/A'}${d.updated?.country ? ` | Country: ${d.updated.country}` : ''}`
+        })) : []),
+        ...(errors?.length > 0 ? errors.map((e: any) => ({
+          domain: e.domain,
+          stats: `✗ Error: ${e.error}`
+        })) : [])
+      ];
+
       setAlertModal({
         isOpen: true,
         title: 'Sync Complete',
         message: `Successfully synced ${updatedCount} domains from updateStats sheet. ${errors?.length || 0} failed.`,
-        type: 'success',
-        details: updates?.length > 0 ? updates.map((d: any) => ({
-          domain: d.domain,
-          stats: `DR ${d.updated?.dr || 'N/A'} | DA ${d.updated?.da || 'N/A'} | Traffic ${d.updated?.traffic || 'N/A'} | SS ${d.updated?.spamScore || 'N/A'}${d.updated?.country ? ` | Country: ${d.updated.country}` : ''}`
-        })) : undefined
+        type: updatedCount > 0 ? 'success' : 'error',
+        details: allDetails.length > 0 ? allDetails : undefined
       });
 
       // Refresh domains to show updated stats

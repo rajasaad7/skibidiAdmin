@@ -15,7 +15,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, pendingPayouts: 0, newWhiteLabelLeads: 0 });
+  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, updateRequests: 0, pendingPayouts: 0, newWhiteLabelLeads: 0 });
 
   useEffect(() => {
     setIsNavigating(false);
@@ -148,10 +148,19 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
                       {notifications.newWhiteLabelLeads}
                     </span>
                   )}
-                  {item.href === '/domains' && notifications.pendingDomains > 0 && (
-                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-orange-500 rounded-full">
-                      {notifications.pendingDomains}
-                    </span>
+                  {item.href === '/domains' && (notifications.pendingDomains > 0 || notifications.updateRequests > 0) && (
+                    <div className="flex items-center gap-1">
+                      {notifications.pendingDomains > 0 && (
+                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-orange-500 rounded-full">
+                          {notifications.pendingDomains}
+                        </span>
+                      )}
+                      {notifications.updateRequests > 0 && (
+                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-yellow-500 rounded-full">
+                          {notifications.updateRequests}
+                        </span>
+                      )}
+                    </div>
                   )}
                   {item.href === '/payouts' && notifications.pendingPayouts > 0 && (
                     <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-orange-500 rounded-full">

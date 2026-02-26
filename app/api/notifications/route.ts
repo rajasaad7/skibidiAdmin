@@ -51,7 +51,7 @@ export async function GET() {
 
     // RPC returns an array with one row, so we need to get the first element
     const statsRow = statsResult.data && statsResult.data.length > 0 ? statsResult.data[0] : null;
-    const stats = statsRow || { pending: 0 };
+    const stats = statsRow || { pending: 0, updateRequests: 0 };
 
     return NextResponse.json({
       success: true,
@@ -59,6 +59,7 @@ export async function GET() {
         newContacts: contactsResult.count || 0,
         newBugs: bugsResult.count || 0,
         pendingDomains: stats.pending || 0,
+        updateRequests: stats.updateRequests || 0,
         pendingPayouts: payoutsResult.count || 0,
         newWhiteLabelLeads: whiteLabelLeadsResult.count || 0,
       }

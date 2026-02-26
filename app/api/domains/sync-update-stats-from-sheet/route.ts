@@ -97,7 +97,7 @@ export async function POST() {
         if (drIdx !== -1 && row[drIdx] && row[drIdx].trim() !== '') {
           const dr = parseInt(row[drIdx].trim());
           if (!isNaN(dr)) {
-            updateData['"domainRating"'] = dr;
+            updateData.domainRating = dr;
             hasUpdates = true;
           }
         }
@@ -106,7 +106,7 @@ export async function POST() {
         if (daIdx !== -1 && row[daIdx] && row[daIdx].trim() !== '') {
           const da = parseInt(row[daIdx].trim());
           if (!isNaN(da)) {
-            updateData['"domainAuthority"'] = da;
+            updateData.domainAuthority = da;
             hasUpdates = true;
           }
         }
@@ -115,7 +115,7 @@ export async function POST() {
         if (spamScoreIdx !== -1 && row[spamScoreIdx] && row[spamScoreIdx].trim() !== '') {
           const spamScore = parseInt(row[spamScoreIdx].trim());
           if (!isNaN(spamScore)) {
-            updateData['"spamScore"'] = spamScore;
+            updateData.spamScore = spamScore;
             hasUpdates = true;
           }
         }
@@ -124,7 +124,7 @@ export async function POST() {
         if (trafficIdx !== -1 && row[trafficIdx] && row[trafficIdx].trim() !== '') {
           const traffic = parseInt(row[trafficIdx].trim());
           if (!isNaN(traffic)) {
-            updateData['"organicTraffic"'] = traffic;
+            updateData.organicTraffic = traffic;
             hasUpdates = true;
           }
         }
@@ -141,7 +141,7 @@ export async function POST() {
         }
 
         // Mark updateStats as false only if we have updates
-        updateData['"updateStats"'] = false;
+        updateData.updateStats = false;
 
         const { error: updateError } = await supabase
           .from('domains')
@@ -156,10 +156,10 @@ export async function POST() {
         updates.push({
           domain: domainName,
           updated: {
-            dr: updateData['"domainRating"'] || null,
-            da: updateData['"domainAuthority"'] || null,
-            spamScore: updateData['"spamScore"'] || null,
-            traffic: updateData['"organicTraffic"'] || null,
+            dr: updateData.domainRating || null,
+            da: updateData.domainAuthority || null,
+            spamScore: updateData.spamScore || null,
+            traffic: updateData.organicTraffic || null,
             country: updateData.country || null
           }
         });
