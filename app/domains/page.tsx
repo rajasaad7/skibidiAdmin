@@ -72,7 +72,7 @@ export default function DomainsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
-  const [stats, setStats] = useState({ total: 0, pending: 0, verified: 0, rejected: 0, domainsWithOwner: 0, domainsWithReseller: 0, uncategorized: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, rejected: 0, domainsWithOwner: 0, domainsWithReseller: 0, uncategorized: 0, updateRequests: 0 });
   const [showUncategorized, setShowUncategorized] = useState(false);
   const [editingSEO, setEditingSEO] = useState<string | null>(null);
   const [seoMetrics, setSeoMetrics] = useState({ domainRating: '', domainAuthority: '', spamScore: '', organicTraffic: '' });
@@ -80,6 +80,10 @@ export default function DomainsPage() {
   const [selectedDomains, setSelectedDomains] = useState<Set<string>>(new Set());
   const [uploadingCSV, setUploadingCSV] = useState(false);
   const [syncingFromSheet, setSyncingFromSheet] = useState(false);
+  const [uploadingUpdateStats, setUploadingUpdateStats] = useState(false);
+  const [syncingUpdateStatsFromSheet, setSyncingUpdateStatsFromSheet] = useState(false);
+  const [showNAStatsDropdown, setShowNAStatsDropdown] = useState(false);
+  const [showUpdateStatsDropdown, setShowUpdateStatsDropdown] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ success: boolean; updatedCount: number; errors?: string[]; totalProcessed: number } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'file' | 'paste'>('file');
@@ -181,8 +185,11 @@ export default function DomainsPage() {
     try {
       // Fetch filtered domains for display
       const params = new URLSearchParams();
-      if (filter !== 'all' && filter !== 'with_owner' && filter !== 'reseller_only') {
+      if (filter !== 'all' && filter !== 'with_owner' && filter !== 'reseller_only' && filter !== 'update_requests') {
         params.append('status', filter);
+      }
+      if (filter === 'update_requests') {
+        params.append('updateRequests', 'true');
       }
       params.append('page', page.toString());
       params.append('limit', pagination.limit.toString());
@@ -219,6 +226,22 @@ export default function DomainsPage() {
   useEffect(() => {
     fetchDomains();
   }, [filter, page, pagination.limit, showUncategorized]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.relative')) {
+        setShowNAStatsDropdown(false);
+        setShowUpdateStatsDropdown(false);
+      }
+    };
+
+    if (showNAStatsDropdown || showUpdateStatsDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showNAStatsDropdown, showUpdateStatsDropdown]);
 
   const handleApproveOffering = async (domainId: string, offeringIndex: number) => {
     try {
@@ -835,6 +858,93 @@ export default function DomainsPage() {
       });
     } finally {
       setUploadingCSV(false);
+    }
+  };
+
+  const uploadUpdateStatsToSheet = async () => {
+    try {
+      setUploadingUpdateStats(true);
+
+      const response = await fetch('/api/domains/upload-update-stats-to-sheet', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Upload Failed',
+          message: data.error || 'Failed to upload updateStats domains to sheet',
+          type: 'error'
+        });
+        return;
+      }
+
+      setAlertModal({
+        isOpen: true,
+        title: 'Upload Successful',
+        message: `Successfully uploaded ${data.count} updateStats domains to Google Sheet (rows ${data.startRow}-${data.endRow})`,
+        type: 'success'
+      });
+    } catch (error) {
+      console.error('Error uploading updateStats domains to sheet:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error uploading updateStats domains to sheet',
+        type: 'error'
+      });
+    } finally {
+      setUploadingUpdateStats(false);
+    }
+  };
+
+  const syncUpdateStatsFromSheet = async () => {
+    try {
+      setSyncingUpdateStatsFromSheet(true);
+
+      const response = await fetch('/api/domains/sync-update-stats-from-sheet', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Sync Failed',
+          message: data.error || 'Failed to sync updateStats domains from sheet',
+          type: 'error'
+        });
+        return;
+      }
+
+      const { updatedCount, updates, errors } = data;
+
+      setAlertModal({
+        isOpen: true,
+        title: 'Sync Complete',
+        message: `Successfully synced ${updatedCount} domains from updateStats sheet. ${errors?.length || 0} failed.`,
+        type: 'success',
+        details: updates?.length > 0 ? updates.map((d: any) => ({
+          domain: d.domain,
+          stats: `DR ${d.updated?.dr || 'N/A'} | DA ${d.updated?.da || 'N/A'} | Traffic ${d.updated?.traffic || 'N/A'} | SS ${d.updated?.spamScore || 'N/A'}${d.updated?.country ? ` | Country: ${d.updated.country}` : ''}`
+        })) : undefined
+      });
+
+      // Refresh domains to show updated stats
+      fetchDomains();
+    } catch (error) {
+      console.error('Error syncing updateStats from sheet:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error syncing updateStats domains from sheet',
+        type: 'error'
+      });
+    } finally {
+      setSyncingUpdateStatsFromSheet(false);
     }
   };
 
@@ -2349,29 +2459,106 @@ export default function DomainsPage() {
             <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
-          <button
-            onClick={exportNADomainsToCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
-          >
-            <Download className="w-4 h-4" />
-            Export N/A Domains
-          </button>
-          <button
-            onClick={uploadNADomainsToSheet}
-            disabled={uploadingCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Upload className="w-4 h-4" />
-            {uploadingCSV ? 'Uploading...' : 'Upload N/A to Sheet'}
-          </button>
-          <button
-            onClick={syncNADomainsFromSheet}
-            disabled={syncingFromSheet}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`w-4 h-4 ${syncingFromSheet ? 'animate-spin' : ''}`} />
-            {syncingFromSheet ? 'Syncing...' : 'Sync N/A from Sheet'}
-          </button>
+
+          {/* N/A Stats Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setShowNAStatsDropdown(!showNAStatsDropdown);
+                setShowUpdateStatsDropdown(false);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
+            >
+              <Download className="w-4 h-4" />
+              N/A Stats
+              <ChevronDown className="w-4 h-4" />
+            </button>
+            {showNAStatsDropdown && (
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <button
+                  onClick={() => {
+                    exportNADomainsToCSV();
+                    setShowNAStatsDropdown(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition"
+                >
+                  <Download className="w-4 h-4 text-orange-600" />
+                  <span className="text-sm text-gray-700">Export N/A Domains</span>
+                </button>
+                <button
+                  onClick={() => {
+                    uploadNADomainsToSheet();
+                    setShowNAStatsDropdown(false);
+                  }}
+                  disabled={uploadingCSV}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Upload className="w-4 h-4 text-green-600" />
+                  <span className="text-sm text-gray-700">
+                    {uploadingCSV ? 'Uploading...' : 'Upload N/A to Sheet'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    syncNADomainsFromSheet();
+                    setShowNAStatsDropdown(false);
+                  }}
+                  disabled={syncingFromSheet}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed rounded-b-lg"
+                >
+                  <RefreshCw className={`w-4 h-4 text-purple-600 ${syncingFromSheet ? 'animate-spin' : ''}`} />
+                  <span className="text-sm text-gray-700">
+                    {syncingFromSheet ? 'Syncing...' : 'Sync N/A from Sheet'}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Update Stats Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                setShowUpdateStatsDropdown(!showUpdateStatsDropdown);
+                setShowNAStatsDropdown(false);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Update Stats
+              <ChevronDown className="w-4 h-4" />
+            </button>
+            {showUpdateStatsDropdown && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <button
+                  onClick={() => {
+                    uploadUpdateStatsToSheet();
+                    setShowUpdateStatsDropdown(false);
+                  }}
+                  disabled={uploadingUpdateStats}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed rounded-t-lg"
+                >
+                  <Upload className="w-4 h-4 text-yellow-600" />
+                  <span className="text-sm text-gray-700">
+                    {uploadingUpdateStats ? 'Uploading...' : 'Upload to Sheet'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    syncUpdateStatsFromSheet();
+                    setShowUpdateStatsDropdown(false);
+                  }}
+                  disabled={syncingUpdateStatsFromSheet}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed rounded-b-lg"
+                >
+                  <RefreshCw className={`w-4 h-4 text-amber-600 ${syncingUpdateStatsFromSheet ? 'animate-spin' : ''}`} />
+                  <span className="text-sm text-gray-700">
+                    {syncingUpdateStatsFromSheet ? 'Syncing...' : 'Sync from Sheet'}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2396,13 +2583,13 @@ export default function DomainsPage() {
           <div className="text-2xl font-bold text-orange-600">{stats.pending}</div>
         </button>
         <button
-          onClick={() => setFilter('verified')}
+          onClick={() => setFilter('update_requests')}
           className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
-            filter === 'verified' ? 'border-green-500 ring-2 ring-green-200' : 'border-gray-200'
+            filter === 'update_requests' ? 'border-yellow-500 ring-2 ring-yellow-200' : 'border-gray-200'
           }`}
         >
-          <div className="text-sm text-gray-600 mb-1">Verified</div>
-          <div className="text-2xl font-bold text-green-600">{stats.verified}</div>
+          <div className="text-sm text-gray-600 mb-1">Update Requests</div>
+          <div className="text-2xl font-bold text-yellow-600">{stats.updateRequests}</div>
         </button>
         <button
           onClick={() => setFilter('rejected')}

@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '50');
   const uncategorized = searchParams.get('uncategorized') === 'true';
+  const updateRequests = searchParams.get('updateRequests') === 'true';
   const offset = (page - 1) * limit;
 
   try {
@@ -29,17 +30,15 @@ export async function GET(request: NextRequest) {
     }
     // Get stats using RPC (much faster for large datasets)
     const { data: statsData, error: statsError } = await supabase.rpc('get_domain_stats');
-    console.log('RPC stats response:', statsData);
-    console.log('RPC stats error:', statsError);
     // RPC returns an array with one row, so we need to get the first element
     const statsRow = statsData && statsData.length > 0 ? statsData[0] : null;
     const stats = statsRow || {
       total: 0,
       pending: 0,
-      verified: 0,
       rejected: 0,
       domainsWithOwner: 0,
-      domainsWithReseller: 0
+      domainsWithReseller: 0,
+      updateRequests: 0
     };
 
     // Build base query with filters BEFORE fetching data
@@ -81,6 +80,11 @@ export async function GET(request: NextRequest) {
       query = query.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
     }
 
+    // Apply update requests filter
+    if (updateRequests) {
+      query = query.eq('"updateStats"', true);
+    }
+
     // If filtering by offering status, we need to get domain IDs first that match the status
     let filteredDomainIds: string[] | null = null;
     if (status && status !== 'all') {
@@ -90,8 +94,6 @@ export async function GET(request: NextRequest) {
 
       if (status === 'pending') {
         offeringsQuery = offeringsQuery.is('"adminApproved"', null);
-      } else if (status === 'verified') {
-        offeringsQuery = offeringsQuery.eq('"adminApproved"', true);
       } else if (status === 'rejected') {
         offeringsQuery = offeringsQuery.eq('"adminApproved"', false);
       }
@@ -134,6 +136,10 @@ export async function GET(request: NextRequest) {
 
     if (uncategorized) {
       countQuery = countQuery.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
+    }
+
+    if (updateRequests) {
+      countQuery = countQuery.eq('"updateStats"', true);
     }
 
     if (filteredDomainIds !== null && filteredDomainIds.length > 0) {
