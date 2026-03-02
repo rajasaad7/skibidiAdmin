@@ -6,6 +6,10 @@ export async function GET(request: NextRequest) {
   const id = searchParams.get('id');
   const search = searchParams.get('search');
   const filter = searchParams.get('filter');
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '50');
+  const sortBy = searchParams.get('sortBy') || 'createdAt';
+  const sortOrder = searchParams.get('sortOrder') || 'desc';
 
   try {
     // If ID is provided, fetch single user by ID
@@ -63,45 +67,77 @@ export async function GET(request: NextRequest) {
     const totalCount = totalRes.count || 0;
     const freeUsersCount = totalCount - paidUsersCount;
 
-    // Build user query based on filter
-    let userQuery = supabase
-      .from('users')
-      .select('_id, fullName, email, isEmailVerified, googleId, twitterId, createdAt, lastActive, contactDetails, UTM')
-      .order('createdAt', { ascending: false });
+    // Use RPC to get users with link counts for efficient sorting
+    const offset = (page - 1) * limit;
 
-    // Apply filters
-    if (filter === 'paid') {
-      userQuery = userQuery.in('_id', Array.from(paidUserIds));
+    // Build filter conditions for RPC
+    let filterCondition = '';
+    if (filter === 'paid' && paidUserIds.size > 0) {
+      const ids = Array.from(paidUserIds).map(id => `'${id}'`).join(',');
+      filterCondition = `AND u._id IN (${ids})`;
     } else if (filter === 'free') {
-      const freeUserIds = Array.from(
-        new Set(
-          (await supabase.from('users').select('_id')).data?.map(u => u._id) || []
-        )
-      ).filter(id => !paidUserIds.has(id));
-      userQuery = userQuery.in('_id', freeUserIds);
+      const ids = Array.from(paidUserIds).map(id => `'${id}'`).join(',');
+      filterCondition = ids.length > 0 ? `AND u._id NOT IN (${ids})` : '';
     } else if (filter === 'new_today') {
-      userQuery = userQuery.gte('createdAt', today.toISOString());
-    } else if (filter === 'advertisers') {
-      userQuery = userQuery.in('_id', Array.from(advertiserIds));
-    } else if (filter === 'publishers') {
-      userQuery = userQuery.in('_id', Array.from(publisherIds));
+      filterCondition = `AND u."createdAt" >= '${today.toISOString()}'`;
+    } else if (filter === 'advertisers' && advertiserIds.size > 0) {
+      const ids = Array.from(advertiserIds).map(id => `'${id}'`).join(',');
+      filterCondition = `AND u._id IN (${ids})`;
+    } else if (filter === 'publishers' && publisherIds.size > 0) {
+      const ids = Array.from(publisherIds).map(id => `'${id}'`).join(',');
+      filterCondition = `AND u._id IN (${ids})`;
     }
 
-    // Apply search
+    // Build search condition
+    let searchCondition = '';
     if (search) {
-      userQuery = userQuery.or(`fullName.ilike.%${search}%,email.ilike.%${search}%`);
+      searchCondition = `AND (u."fullName" ILIKE '%${search}%' OR u.email ILIKE '%${search}%')`;
     }
 
-    // Limit results
-    userQuery = userQuery.limit(100);
+    // Build ORDER BY clause
+    let orderByClause = '';
+    if (sortBy === 'linksCount') {
+      orderByClause = `"linksCount" ${sortOrder === 'asc' ? 'ASC' : 'DESC'}, u."createdAt" DESC`;
+    } else if (sortBy === 'createdAt') {
+      orderByClause = `u."createdAt" ${sortOrder === 'asc' ? 'ASC' : 'DESC'}`;
+    } else if (sortBy === 'lastActive') {
+      orderByClause = `u."lastActive" ${sortOrder === 'asc' ? 'ASC NULLS FIRST' : 'DESC NULLS LAST'}`;
+    } else {
+      orderByClause = 'u."createdAt" DESC';
+    }
 
-    const { data, error } = await userQuery;
+    // Call RPC to get users with link counts
+    const { data: usersWithCounts, error: rpcError } = await supabase.rpc('get_users_with_link_counts', {
+      p_limit: limit,
+      p_offset: offset,
+      p_filter_condition: filterCondition,
+      p_search_condition: searchCondition,
+      p_order_by: orderByClause
+    });
 
-    if (error) throw error;
+    if (rpcError) {
+      console.error('RPC Error:', rpcError);
+      throw rpcError;
+    }
+
+    // Get total count for pagination
+    const { data: countData, error: countError } = await supabase.rpc('get_users_count', {
+      p_filter_condition: filterCondition,
+      p_search_condition: searchCondition
+    });
+
+    if (countError) {
+      console.error('Count Error:', countError);
+      throw countError;
+    }
+
+    const total = countData || 0;
+    const totalPages = Math.ceil(total / limit);
+    const paginatedUsers = usersWithCounts || [];
 
     return NextResponse.json({
       success: true,
-      users: data,
+      users: paginatedUsers,
       stats: {
         total: totalCount,
         paidUsers: paidUsersCount,
@@ -109,6 +145,12 @@ export async function GET(request: NextRequest) {
         newToday: todayRes.count || 0,
         advertisers: advertiserIds.size,
         publishers: publisherIds.size
+      },
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages
       }
     });
   } catch (error) {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck, Info } from 'lucide-react';
+import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck, Info, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 interface User {
@@ -13,6 +13,7 @@ interface User {
   twitterId?: string;
   createdAt: string;
   lastActive?: string;
+  linksCount?: number;
   UTM?: {
     utm_source?: string;
     utm_medium?: string;
@@ -47,6 +48,10 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [stats, setStats] = useState({
     total: 0,
     paidUsers: 0,
@@ -70,6 +75,11 @@ export default function UsersPage() {
         params.append('filter', activeFilter);
       }
 
+      params.append('page', page.toString());
+      params.append('limit', '50');
+      params.append('sortBy', sortBy);
+      params.append('sortOrder', sortOrder);
+
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
@@ -81,6 +91,9 @@ export default function UsersPage() {
         if (data.stats) {
           setStats(data.stats);
         }
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
       }
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -91,7 +104,17 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [activeFilter]);
+  }, [activeFilter, page, sortBy, sortOrder]);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -211,21 +234,58 @@ export default function UsersPage() {
               <tr>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">User</th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Email</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Created</th>
-                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Last Active</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                  <button
+                    onClick={() => handleSort('linksCount')}
+                    className="flex items-center gap-1 hover:text-blue-600 transition"
+                  >
+                    Links
+                    {sortBy === 'linksCount' ? (
+                      sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                    ) : (
+                      <ArrowUpDown className="w-4 h-4 opacity-40" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                  <button
+                    onClick={() => handleSort('createdAt')}
+                    className="flex items-center gap-1 hover:text-blue-600 transition"
+                  >
+                    Created
+                    {sortBy === 'createdAt' ? (
+                      sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                    ) : (
+                      <ArrowUpDown className="w-4 h-4 opacity-40" />
+                    )}
+                  </button>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">
+                  <button
+                    onClick={() => handleSort('lastActive')}
+                    className="flex items-center gap-1 hover:text-blue-600 transition"
+                  >
+                    Last Active
+                    {sortBy === 'lastActive' ? (
+                      sortOrder === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                    ) : (
+                      <ArrowUpDown className="w-4 h-4 opacity-40" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     Loading...
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     No users found
                   </td>
                 </tr>
@@ -323,6 +383,12 @@ export default function UsersPage() {
                         {user.email}
                       </div>
                     </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{user.linksCount || 0}</span>
+                        <span className="text-gray-500 text-xs">links</span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
@@ -348,6 +414,68 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {!loading && users.length > 0 && pagination.totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} users
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(page - 1)}
+                disabled={page === 1}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                  page === 1
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
+                  .filter(p => {
+                    if (pagination.totalPages <= 7) return true;
+                    if (p === 1 || p === pagination.totalPages) return true;
+                    if (p >= page - 1 && p <= page + 1) return true;
+                    if (p === 2 && page > 3) return 'ellipsis-start';
+                    if (p === pagination.totalPages - 1 && page < pagination.totalPages - 2) return 'ellipsis-end';
+                    return false;
+                  })
+                  .map((p, idx, arr) => {
+                    if (p === 'ellipsis-start' || p === 'ellipsis-end') {
+                      return <span key={p} className="px-2 text-gray-400">...</span>;
+                    }
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p as number)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                          page === p
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+              </div>
+              <button
+                onClick={() => setPage(page + 1)}
+                disabled={page === pagination.totalPages}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                  page === pagination.totalPages
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

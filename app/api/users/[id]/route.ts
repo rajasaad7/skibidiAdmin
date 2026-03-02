@@ -1,6 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: userId } = await params;
+
+  try {
+    const body = await request.json();
+    const { isSuspended } = body;
+
+    if (typeof isSuspended !== 'boolean') {
+      return NextResponse.json(
+        { success: false, error: 'isSuspended must be a boolean' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ isSuspended })
+      .eq('_id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      success: true,
+      user: data
+    });
+  } catch (error: any) {
+    console.error('Error updating user:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to update user', details: error?.message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -75,9 +114,9 @@ export async function GET(
       supabase.from('marketplace_orders').select('_id, totalPrice, platformFee, publisherEarnings, status, createdAt, updatedAt, serviceType, domainId, domains(domainName), buyerId').eq('publisherId', userId).order('createdAt', { ascending: false }),
 
       // Get domains (as publisher)
-      supabase.from('domains').select('_id, publisherOfferings').eq('userId', userId),
+      supabase.from('domains').select('_id').eq('userId', userId),
       // Get domains with full details
-      supabase.from('domains').select('_id, domainName, verificationStatus, createdAt, publisherOfferings, categoryId, domain_categories(name)').eq('userId', userId).order('createdAt', { ascending: false }),
+      supabase.from('domains').select('_id, domainName, verificationStatus, createdAt, categoryId, domain_categories(name)').eq('userId', userId).order('createdAt', { ascending: false }),
       supabase.from('domains').select('_id', { count: 'exact', head: true }).eq('userId', userId).eq('verificationStatus', 'verified'),
 
       // Get earnings (as publisher)
@@ -103,10 +142,57 @@ export async function GET(
       sum + Number(order.publisherEarnings || 0), 0
     );
 
+    // Fetch domain offerings from the separate table
+    const domainIds = (domainsDataRes.data || []).map((d: any) => d._id);
+    let offeringsMap = new Map<string, any[]>();
+
+    if (domainIds.length > 0) {
+      const { data: offeringsData } = await supabase
+        .from('domain_offerings')
+        .select(`
+          _id,
+          "domainId",
+          "domainType",
+          "publisherId",
+          "guestPostEnabled",
+          "linkInsertionEnabled",
+          "contentWritingEnabled",
+          "guestPostPrice",
+          "linkInsertionPrice",
+          "contentWritingIncluded",
+          "contentWritingPrice",
+          "minWordCount",
+          "maxWordCount",
+          "turnaroundTimeDays",
+          "contentRequirements",
+          "prohibitedNiches",
+          "allowedLinkTypes",
+          "maxOutboundLinks",
+          "examplePosts",
+          "searchEngineIndexed",
+          "isActive",
+          "adminApproved",
+          "adminRejectionReason",
+          "createdAt",
+          "updatedAt"
+        `)
+        .in('"domainId"', domainIds)
+        .order('createdAt', { ascending: true });
+
+      // Create a map of offerings by domainId
+      (offeringsData || []).forEach((offering: any) => {
+        const domainId = offering.domainId;
+        if (!offeringsMap.has(domainId)) {
+          offeringsMap.set(domainId, []);
+        }
+        offeringsMap.get(domainId)!.push(offering);
+      });
+    }
+
     // Count verified domains
     let verifiedDomainsCount = 0;
     (domainsRes.data || []).forEach((domain: any) => {
-      const offerings = domain.publisherOfferings || [];
+      const offerings = offeringsMap.get(domain._id) || [];
       if (offerings.some((o: any) => o.adminApproved === true)) {
         verifiedDomainsCount++;
       }
@@ -130,6 +216,12 @@ export async function GET(
     const publisherOrdersWithBuyers = publisherOrders.map((order: any) => ({
       ...order,
       users: buyersMap.get(order.buyerId) ? { fullName: buyersMap.get(order.buyerId).fullName } : null
+    }));
+
+    // Attach offerings to domains
+    const domainsWithOfferings = (domainsDataRes.data || []).map((domain: any) => ({
+      ...domain,
+      publisherOfferings: offeringsMap.get(domain._id) || []
     }));
 
     return NextResponse.json({
@@ -163,7 +255,7 @@ export async function GET(
         subscriptionHistory: subscriptionHistoryRes.data || [],
         marketplaceOrdersBuyer: marketplaceOrdersDataRes.data || [],
         marketplaceOrdersPublisher: publisherOrdersWithBuyers,
-        domains: domainsDataRes.data || []
+        domains: domainsWithOfferings
       }
     });
   } catch (error: any) {

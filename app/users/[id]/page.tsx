@@ -77,6 +77,7 @@ interface UserDetails {
     fullName: string;
     email: string;
     isEmailVerified: boolean;
+    isSuspended?: boolean;
     googleId?: string;
     twitterId?: string;
     createdAt: string;
@@ -418,6 +419,42 @@ export default function UserDetailsPage() {
     }
   };
 
+  const handleToggleSuspend = async () => {
+    if (!details) return;
+
+    const newSuspendedState = !details.user.isSuspended;
+    const confirmMessage = newSuspendedState
+      ? 'Are you sure you want to suspend this user? They will not be able to access their account.'
+      : 'Are you sure you want to unsuspend this user? They will regain access to their account.';
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isSuspended: newSuspendedState })
+      });
+
+      if (response.ok) {
+        // Refresh the user details
+        const detailsResponse = await fetch(`/api/users/${userId}`);
+        const data = await detailsResponse.json();
+        if (data.success) {
+          setDetails(data.details);
+        }
+        alert(newSuspendedState ? 'User suspended successfully!' : 'User unsuspended successfully!');
+      } else {
+        alert('Failed to update user suspension status');
+      }
+    } catch (error) {
+      console.error('Error updating user suspension status:', error);
+      alert('Error updating user suspension status');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -445,7 +482,19 @@ export default function UserDetailsPage() {
           <ArrowLeft className="w-4 h-4" />
           Back to Users
         </button>
-        <h1 className="text-3xl font-bold text-gray-900">User Details</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">User Details</h1>
+          <button
+            onClick={handleToggleSuspend}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition ${
+              details.user.isSuspended
+                ? 'bg-green-600 text-white hover:bg-green-700'
+                : 'bg-red-600 text-white hover:bg-red-700'
+            }`}
+          >
+            {details.user.isSuspended ? 'Unsuspend User' : 'Suspend User'}
+          </button>
+        </div>
       </div>
 
       {/* User Info Card */}
@@ -475,15 +524,22 @@ export default function UserDetailsPage() {
             </div>
           </div>
           <div className="text-right">
-            {details.user.isEmailVerified ? (
-              <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
-                Verified
-              </span>
-            ) : (
-              <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-orange-100 text-orange-800">
-                Unverified
-              </span>
-            )}
+            <div className="flex items-center gap-2 justify-end mb-2">
+              {details.user.isEmailVerified ? (
+                <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                  Verified
+                </span>
+              ) : (
+                <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-orange-100 text-orange-800">
+                  Unverified
+                </span>
+              )}
+              {details.user.isSuspended && (
+                <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">
+                  Suspended
+                </span>
+              )}
+            </div>
             <div className="text-sm text-gray-500 mt-2">
               Last active: {details.user.lastActive ? new Date(details.user.lastActive).toLocaleDateString() : 'Never'}
             </div>
