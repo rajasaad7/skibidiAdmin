@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, User, Mail, Calendar, Link as LinkIcon, Target, Globe, ShoppingCart, DollarSign, CreditCard, Package, ExternalLink, Edit, Trash2, CheckCircle, XCircle, MessageCircle, Send } from 'lucide-react';
+import { ArrowLeft, User, Mail, Calendar, Link as LinkIcon, Target, Globe, ShoppingCart, DollarSign, CreditCard, Package, ExternalLink, Edit, Trash2, CheckCircle, XCircle, MessageCircle, Send, Ban, X } from 'lucide-react';
 
 interface LinkData {
   _id: string;
@@ -171,6 +171,11 @@ export default function UserDetailsPage() {
     disabledLastActive: false,
   });
   const [showContactModal, setShowContactModal] = useState(false);
+  const [suspendModal, setSuspendModal] = useState<{ open: boolean; userName: string } | null>(null);
+  const [suspensionReason, setSuspensionReason] = useState('');
+  const [suspending, setSuspending] = useState(false);
+  const [unsuspendModal, setUnsuspendModal] = useState<{ open: boolean; userName: string } | null>(null);
+  const [unsuspending, setUnsuspending] = useState(false);
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -419,39 +424,69 @@ export default function UserDetailsPage() {
     }
   };
 
-  const handleToggleSuspend = async () => {
-    if (!details) return;
-
-    const newSuspendedState = !details.user.isSuspended;
-    const confirmMessage = newSuspendedState
-      ? 'Are you sure you want to suspend this user? They will not be able to access their account.'
-      : 'Are you sure you want to unsuspend this user? They will regain access to their account.';
-
-    if (!confirm(confirmMessage)) {
+  const handleSuspendUser = async () => {
+    if (!suspendModal || !suspensionReason.trim()) {
+      alert('Please provide a suspension reason');
       return;
     }
-
+    setSuspending(true);
     try {
-      const response = await fetch(`/api/users/${userId}`, {
-        method: 'PATCH',
+      const response = await fetch('/api/users/suspend', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isSuspended: newSuspendedState })
+        body: JSON.stringify({
+          userId: userId,
+          suspensionReason: suspensionReason.trim(),
+        }),
       });
-
-      if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+        setSuspendModal(null);
+        setSuspensionReason('');
         // Refresh the user details
         const detailsResponse = await fetch(`/api/users/${userId}`);
-        const data = await detailsResponse.json();
-        if (data.success) {
-          setDetails(data.details);
+        const refreshData = await detailsResponse.json();
+        if (refreshData.success) {
+          setDetails(refreshData.details);
         }
-        alert(newSuspendedState ? 'User suspended successfully!' : 'User unsuspended successfully!');
       } else {
-        alert('Failed to update user suspension status');
+        alert(`Failed to suspend user: ${data.error}`);
       }
     } catch (error) {
-      console.error('Error updating user suspension status:', error);
-      alert('Error updating user suspension status');
+      console.error('Error suspending user:', error);
+      alert('Failed to suspend user');
+    } finally {
+      setSuspending(false);
+    }
+  };
+
+  const handleUnsuspendUser = async () => {
+    if (!unsuspendModal) return;
+
+    setUnsuspending(true);
+    try {
+      const response = await fetch('/api/users/unsuspend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: userId }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setUnsuspendModal(null);
+        // Refresh the user details
+        const detailsResponse = await fetch(`/api/users/${userId}`);
+        const refreshData = await detailsResponse.json();
+        if (refreshData.success) {
+          setDetails(refreshData.details);
+        }
+      } else {
+        alert(`Failed to unsuspend user: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error unsuspending user:', error);
+      alert('Failed to unsuspend user');
+    } finally {
+      setUnsuspending(false);
     }
   };
 
@@ -484,16 +519,23 @@ export default function UserDetailsPage() {
         </button>
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-gray-900">User Details</h1>
-          <button
-            onClick={handleToggleSuspend}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition ${
-              details.user.isSuspended
-                ? 'bg-green-600 text-white hover:bg-green-700'
-                : 'bg-red-600 text-white hover:bg-red-700'
-            }`}
-          >
-            {details.user.isSuspended ? 'Unsuspend User' : 'Suspend User'}
-          </button>
+          {!details.user.isSuspended ? (
+            <button
+              onClick={() => setSuspendModal({ open: true, userName: details.user.fullName })}
+              className="px-4 py-2 text-sm font-semibold rounded-lg transition bg-red-600 text-white hover:bg-red-700 flex items-center gap-2"
+            >
+              <Ban className="w-4 h-4" />
+              Suspend User
+            </button>
+          ) : (
+            <button
+              onClick={() => setUnsuspendModal({ open: true, userName: details.user.fullName })}
+              className="px-4 py-2 text-sm font-semibold rounded-lg transition bg-green-600 text-white hover:bg-green-700 flex items-center gap-2"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Unsuspend User
+            </button>
+          )}
         </div>
       </div>
 
@@ -1688,6 +1730,113 @@ export default function UserDetailsPage() {
               >
                 <Trash2 className="w-4 h-4" />
                 Reset Contact Info
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Suspend User Modal */}
+      {suspendModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <Ban className="w-6 h-6 text-red-600" />
+                Suspend User
+              </h3>
+              <button
+                onClick={() => {
+                  setSuspendModal(null);
+                  setSuspensionReason('');
+                }}
+                className="text-gray-400 hover:text-gray-600 transition"
+                disabled={suspending}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-gray-700 mb-2">
+                You are about to suspend <span className="font-bold">{suspendModal.userName}</span>
+              </p>
+              <p className="text-sm text-red-600 mb-4">
+                This will prevent the user from accessing their account.
+              </p>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Suspension Reason <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                value={suspensionReason}
+                onChange={(e) => setSuspensionReason(e.target.value)}
+                placeholder="Enter the reason for suspension..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+                rows={4}
+                disabled={suspending}
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setSuspendModal(null);
+                  setSuspensionReason('');
+                }}
+                disabled={suspending}
+                className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSuspendUser}
+                disabled={suspending || !suspensionReason.trim()}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {suspending ? 'Suspending...' : 'Suspend User'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsuspend User Modal */}
+      {unsuspendModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+                Unsuspend User
+              </h3>
+              <button
+                onClick={() => setUnsuspendModal(null)}
+                className="text-gray-400 hover:text-gray-600 transition"
+                disabled={unsuspending}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="mb-4">
+              <p className="text-gray-700 mb-2">
+                You are about to unsuspend <span className="font-bold">{unsuspendModal.userName}</span>
+              </p>
+              <p className="text-sm text-green-600 mb-4">
+                This will allow the user to regain access to their account.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setUnsuspendModal(null)}
+                disabled={unsuspending}
+                className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUnsuspendUser}
+                disabled={unsuspending}
+                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {unsuspending ? 'Unsuspending...' : 'Unsuspend User'}
               </button>
             </div>
           </div>
