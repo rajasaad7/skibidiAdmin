@@ -11,6 +11,7 @@ interface DuplicateGroup {
   userCount: number;
   users: any[];
   riskLevel: 'high' | 'medium' | 'low';
+  isResolved: boolean;
   hasVPN: boolean;
   hasProxy: boolean;
   hasSuspiciousActivity: boolean;
@@ -25,6 +26,7 @@ interface DuplicateStats {
   highRiskGroups: number;
   mediumRiskGroups: number;
   lowRiskGroups: number;
+  resolvedGroups: number;
 }
 
 export default function RiskControlPage() {
@@ -64,11 +66,13 @@ export default function RiskControlPage() {
     if (activeFilter === 'all') {
       setFilteredGroups(duplicateGroups);
     } else if (activeFilter === 'high') {
-      setFilteredGroups(duplicateGroups.filter(g => g.riskLevel === 'high'));
+      setFilteredGroups(duplicateGroups.filter(g => g.riskLevel === 'high' && !g.isResolved));
     } else if (activeFilter === 'medium') {
-      setFilteredGroups(duplicateGroups.filter(g => g.riskLevel === 'medium'));
+      setFilteredGroups(duplicateGroups.filter(g => g.riskLevel === 'medium' && !g.isResolved));
     } else if (activeFilter === 'low') {
-      setFilteredGroups(duplicateGroups.filter(g => g.riskLevel === 'low'));
+      setFilteredGroups(duplicateGroups.filter(g => g.riskLevel === 'low' && !g.isResolved));
+    } else if (activeFilter === 'resolved') {
+      setFilteredGroups(duplicateGroups.filter(g => g.isResolved));
     } else if (activeFilter === 'contact') {
       setFilteredGroups(duplicateGroups.filter(g => g.groupType === 'Contact Details'));
     } else if (activeFilter === 'ip') {
@@ -176,7 +180,7 @@ export default function RiskControlPage() {
         <>
           {/* Stats Overview */}
           {duplicateStats && (
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
               <button
                 onClick={() => setActiveFilter('all')}
                 className={`bg-white rounded-lg shadow-sm p-4 border-2 transition text-left hover:shadow-md ${
@@ -230,12 +234,26 @@ export default function RiskControlPage() {
                 <div className="text-xs text-green-700 mt-1">Review when needed</div>
               </button>
 
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg shadow-sm p-4 border-2 border-blue-200">
-                <div className="text-sm text-blue-700 font-semibold mb-1">Detection Rate</div>
-                <div className="text-3xl font-bold text-blue-700">
-                  {duplicateStats.totalDuplicateUsers > 0 ? Math.round((duplicateStats.totalDuplicateUsers / 100) * 100) / 100 : 0}%
+              <button
+                onClick={() => setActiveFilter('resolved')}
+                className={`bg-white rounded-lg shadow-sm p-4 border-2 transition text-left hover:shadow-md ${
+                  activeFilter === 'resolved' ? 'border-blue-600 ring-2 ring-blue-600' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="w-4 h-4 text-blue-600" />
+                  <div className="text-sm text-blue-600 font-semibold">Resolved</div>
                 </div>
-                <div className="text-xs text-blue-600 mt-1">Of total user base</div>
+                <div className="text-3xl font-bold text-blue-600">{duplicateStats.resolvedGroups}</div>
+                <div className="text-xs text-blue-700 mt-1">Action taken</div>
+              </button>
+
+              <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg shadow-sm p-4 border-2 border-purple-200">
+                <div className="text-sm text-purple-700 font-semibold mb-1">Active Risks</div>
+                <div className="text-3xl font-bold text-purple-700">
+                  {duplicateStats.highRiskGroups + duplicateStats.mediumRiskGroups + duplicateStats.lowRiskGroups}
+                </div>
+                <div className="text-xs text-purple-600 mt-1">Needs review</div>
               </div>
             </div>
           )}
@@ -305,7 +323,9 @@ export default function RiskControlPage() {
                   <div
                     key={group.groupKey}
                     className={`bg-white rounded-xl shadow-sm border-2 overflow-hidden transition-all ${
-                      group.riskLevel === 'high'
+                      group.isResolved
+                        ? 'border-blue-300 opacity-75'
+                        : group.riskLevel === 'high'
                         ? 'border-red-300'
                         : group.riskLevel === 'medium'
                         ? 'border-orange-300'
@@ -316,7 +336,9 @@ export default function RiskControlPage() {
                     <button
                       onClick={() => toggleGroup(group.groupKey)}
                       className={`w-full px-6 py-4 flex items-center justify-between transition-colors ${
-                        group.riskLevel === 'high'
+                        group.isResolved
+                          ? 'bg-blue-50 hover:bg-blue-100'
+                          : group.riskLevel === 'high'
                           ? 'bg-red-50 hover:bg-red-100'
                           : group.riskLevel === 'medium'
                           ? 'bg-orange-50 hover:bg-orange-100'
@@ -325,7 +347,9 @@ export default function RiskControlPage() {
                     >
                       <div className="flex items-center gap-4 flex-1">
                         <Copy className={`w-6 h-6 ${
-                          group.riskLevel === 'high'
+                          group.isResolved
+                            ? 'text-blue-600'
+                            : group.riskLevel === 'high'
                             ? 'text-red-600'
                             : group.riskLevel === 'medium'
                             ? 'text-orange-600'
@@ -334,15 +358,21 @@ export default function RiskControlPage() {
                         <div className="text-left flex-1">
                           <div className="flex items-center gap-3 mb-1">
                             <h3 className="text-lg font-bold text-gray-900">{group.groupType}</h3>
-                            <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
-                              group.riskLevel === 'high'
-                                ? 'bg-red-200 text-red-800'
-                                : group.riskLevel === 'medium'
-                                ? 'bg-orange-200 text-orange-800'
-                                : 'bg-green-200 text-green-800'
-                            }`}>
-                              {group.riskLevel} Risk
-                            </span>
+                            {group.isResolved ? (
+                              <span className="px-2 py-0.5 rounded text-xs font-bold uppercase bg-blue-200 text-blue-800">
+                                RESOLVED
+                              </span>
+                            ) : (
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                                group.riskLevel === 'high'
+                                  ? 'bg-red-200 text-red-800'
+                                  : group.riskLevel === 'medium'
+                                  ? 'bg-orange-200 text-orange-800'
+                                  : 'bg-green-200 text-green-800'
+                              }`}>
+                                {group.riskLevel} Risk
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm text-gray-600 font-mono">{group.sharedValue}</p>
                           <div className="flex items-center gap-3 mt-2 flex-wrap">

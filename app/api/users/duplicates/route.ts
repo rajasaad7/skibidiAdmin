@@ -8,6 +8,7 @@ interface DuplicateGroup {
   userCount: number;
   users: any[];
   riskLevel: 'high' | 'medium' | 'low';
+  isResolved: boolean;
   hasVPN: boolean;
   hasProxy: boolean;
   hasSuspiciousActivity: boolean;
@@ -280,6 +281,7 @@ export async function GET(request: NextRequest) {
               matchingSignals,
               compositeScore: Math.round(compositeScore),
               riskLevel: 'low',
+              isResolved: false,
               hasVPN: false,
               hasProxy: false,
               hasSuspiciousActivity: false,
@@ -360,6 +362,21 @@ export async function GET(request: NextRequest) {
           group.riskLevel = 'low';
         }
 
+        // Determine if the group is resolved based on suspension status
+        const suspendedUsers = group.users.filter((u: any) => u.isSuspended === true);
+        const activeUsers = group.users.filter((u: any) => !u.isSuspended);
+
+        // A group is resolved if:
+        // 1. At least one user is suspended, OR
+        // 2. Group has more than 2 users and at least 1 is active (not suspended)
+        if (suspendedUsers.length > 0) {
+          group.isResolved = true;
+        } else if (group.users.length > 2 && activeUsers.length >= 1) {
+          group.isResolved = true;
+        } else {
+          group.isResolved = false;
+        }
+
         return group;
       })
       .sort((a, b) => {
@@ -385,9 +402,10 @@ export async function GET(request: NextRequest) {
     const stats = {
       totalGroups: duplicates.length,
       totalDuplicateUsers: uniqueUserIds.size,
-      highRiskGroups: duplicates.filter((g) => g.riskLevel === 'high').length,
-      mediumRiskGroups: duplicates.filter((g) => g.riskLevel === 'medium').length,
-      lowRiskGroups: duplicates.filter((g) => g.riskLevel === 'low').length,
+      highRiskGroups: duplicates.filter((g) => g.riskLevel === 'high' && !g.isResolved).length,
+      mediumRiskGroups: duplicates.filter((g) => g.riskLevel === 'medium' && !g.isResolved).length,
+      lowRiskGroups: duplicates.filter((g) => g.riskLevel === 'low' && !g.isResolved).length,
+      resolvedGroups: duplicates.filter((g) => g.isResolved).length,
     };
 
     return NextResponse.json({
