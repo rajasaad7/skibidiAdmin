@@ -444,13 +444,13 @@ export default function UsersPage() {
                     return false;
                   })
                   .map((p, idx, arr) => {
-                    if (p === 'ellipsis-start' || p === 'ellipsis-end') {
+                    if (typeof p === 'string') {
                       return <span key={p} className="px-2 text-gray-400">...</span>;
                     }
                     return (
                       <button
                         key={p}
-                        onClick={() => setPage(p as number)}
+                        onClick={() => setPage(p)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                           page === p
                             ? 'bg-blue-600 text-white'
