@@ -52,6 +52,8 @@ interface Order {
   refundedAmount?: number;
   refundRequestedAt?: string;
   refundedAt?: string;
+  // Verification
+  manualVerified?: boolean;
   // Relations
   domains?: {
     domainName: string;
@@ -436,6 +438,38 @@ export default function OrdersPage() {
       toast.error('Error deleting order');
     } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  const handleManualVerifiedToggle = async (orderId: string, currentValue: boolean | undefined) => {
+    try {
+      const newValue = !currentValue;
+      const response = await fetch('/api/orders/manual-verified', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId,
+          manualVerified: newValue,
+        }),
+      });
+
+      if (response.ok) {
+        // Update local state
+        if (editingOrder) {
+          setEditingOrder({ ...editingOrder, manualVerified: newValue });
+        }
+        setOrders(orders.map(o =>
+          o._id === orderId ? { ...o, manualVerified: newValue } : o
+        ));
+        toast.success(`Manual verification ${newValue ? 'enabled' : 'disabled'}`);
+      } else {
+        toast.error('Failed to update manual verification');
+      }
+    } catch (error) {
+      console.error('Error updating manual verification:', error);
+      toast.error('Error updating manual verification');
     }
   };
 
@@ -893,6 +927,33 @@ export default function OrdersPage() {
                         )}
                       </>
                     )}
+                  </div>
+
+                  {/* Manual Verified Toggle */}
+                  <div className="col-span-2 flex items-center justify-between border-t pt-3 mt-1">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900">
+                        Manual Verification
+                      </label>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Mark this order as manually verified
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleManualVerifiedToggle(editingOrder._id, editingOrder.manualVerified)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                        editingOrder.manualVerified ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
+                      role="switch"
+                      aria-checked={editingOrder.manualVerified || false}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          editingOrder.manualVerified ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
               </div>

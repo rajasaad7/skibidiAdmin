@@ -41,71 +41,31 @@ export async function GET(request: NextRequest) {
       updateRequests: 0
     };
 
-    // Build base query with filters BEFORE fetching data
-    let query = supabase
-      .from('domains')
-      .select(`
-        _id,
-        domainName,
-        url,
-        verificationStatus,
-        domainRating,
-        domainAuthority,
-        pageAuthority,
-        trustFlow,
-        citationFlow,
-        spamScore,
-        organicTraffic,
-        referringDomains,
-        categoryId,
-        description,
-        language,
-        country,
-        domainType,
-        createdAt,
-        userId,
-        isActive,
-        isFeatured,
-        editHistory,
-        domain_categories(name)
-      `);
+    // Use RPC for efficient filtering when status filter is applied
+    let paginatedDomains: any[] = [];
+    let totalCount = 0;
 
-    // Apply search filter
-    if (search && search.trim()) {
-      query = query.ilike('domainName', `%${search.trim()}%`);
-    }
-
-    // Apply uncategorized filter
-    if (uncategorized) {
-      query = query.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
-    }
-
-    // Apply update requests filter
-    if (updateRequests) {
-      query = query.eq('"updateStats"', true);
-    }
-
-    // If filtering by offering status, we need to get domain IDs first that match the status
-    let filteredDomainIds: string[] | null = null;
     if (status && status !== 'all') {
-      let offeringsQuery = supabase
-        .from('domain_offerings')
-        .select('"domainId"');
+      // Use RPC function for efficient server-side filtering
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('get_filtered_domains_by_status', {
+        filter_status: status,
+        search_term: search && search.trim() ? search.trim() : null,
+        is_uncategorized: uncategorized,
+        has_update_requests: updateRequests,
+        page_num: page,
+        page_limit: limit
+      });
 
-      if (status === 'pending') {
-        offeringsQuery = offeringsQuery.is('"adminApproved"', null);
-      } else if (status === 'rejected') {
-        offeringsQuery = offeringsQuery.eq('"adminApproved"', false);
+      if (rpcError) {
+        console.error('RPC error:', rpcError);
+        throw rpcError;
       }
 
-      const { data: offeringsDomainIds } = await offeringsQuery;
-      filteredDomainIds = offeringsDomainIds ? [...new Set(offeringsDomainIds.map(o => o.domainId))] : [];
+      // Extract domain IDs and total count from RPC result
+      const domainIds = rpcResult?.map((r: any) => r.domain_id) || [];
+      totalCount = rpcResult && rpcResult.length > 0 ? rpcResult[0].total_count : 0;
 
-      // Apply domain ID filter to main query
-      if (filteredDomainIds.length > 0) {
-        query = query.in('_id', filteredDomainIds);
-      } else {
-        // No domains match the status filter, return empty
+      if (domainIds.length === 0) {
         return NextResponse.json({
           success: true,
           domains: [],
@@ -121,43 +81,120 @@ export async function GET(request: NextRequest) {
           }
         });
       }
+
+      // Fetch full domain data for the filtered IDs
+      const { data, error } = await supabase
+        .from('domains')
+        .select(`
+          _id,
+          domainName,
+          url,
+          verificationStatus,
+          domainRating,
+          domainAuthority,
+          pageAuthority,
+          trustFlow,
+          citationFlow,
+          spamScore,
+          organicTraffic,
+          referringDomains,
+          categoryId,
+          description,
+          language,
+          country,
+          domainType,
+          createdAt,
+          userId,
+          isActive,
+          isFeatured,
+          editHistory,
+          domain_categories(name)
+        `)
+        .in('_id', domainIds)
+        .order('createdAt', { ascending: false });
+
+      if (error) throw error;
+      paginatedDomains = data || [];
+    } else {
+      // No status filter, use regular query
+      let query = supabase
+        .from('domains')
+        .select(`
+          _id,
+          domainName,
+          url,
+          verificationStatus,
+          domainRating,
+          domainAuthority,
+          pageAuthority,
+          trustFlow,
+          citationFlow,
+          spamScore,
+          organicTraffic,
+          referringDomains,
+          categoryId,
+          description,
+          language,
+          country,
+          domainType,
+          createdAt,
+          userId,
+          isActive,
+          isFeatured,
+          editHistory,
+          domain_categories(name)
+        `);
+
+      // Apply search filter
+      if (search && search.trim()) {
+        query = query.ilike('domainName', `%${search.trim()}%`);
+      }
+
+      // Apply uncategorized filter
+      if (uncategorized) {
+        query = query.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
+      }
+
+      // Apply update requests filter
+      if (updateRequests) {
+        query = query.eq('"updateStats"', true);
+      }
+
+      query = query.order('createdAt', { ascending: false });
+
+      // Get total count for filtered results
+      let countQuery = supabase
+        .from('domains')
+        .select('_id', { count: 'exact', head: true });
+
+      if (search && search.trim()) {
+        countQuery = countQuery.ilike('domainName', `%${search.trim()}%`);
+      }
+
+      if (uncategorized) {
+        countQuery = countQuery.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
+      }
+
+      if (updateRequests) {
+        countQuery = countQuery.eq('"updateStats"', true);
+      }
+
+      const { count, error: countError } = await countQuery;
+
+      if (countError && countError.code !== 'PGRST116') {
+        console.error('Count error:', countError);
+      }
+
+      totalCount = count || 0;
+
+      // Apply pagination at database level
+      query = query.range(offset, offset + limit - 1);
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      paginatedDomains = data || [];
     }
-
-    query = query.order('createdAt', { ascending: false });
-
-    // Get total count for filtered results
-    let countQuery = supabase
-      .from('domains')
-      .select('_id', { count: 'exact', head: true });
-
-    if (search && search.trim()) {
-      countQuery = countQuery.ilike('domainName', `%${search.trim()}%`);
-    }
-
-    if (uncategorized) {
-      countQuery = countQuery.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
-    }
-
-    if (updateRequests) {
-      countQuery = countQuery.eq('"updateStats"', true);
-    }
-
-    if (filteredDomainIds !== null && filteredDomainIds.length > 0) {
-      countQuery = countQuery.in('_id', filteredDomainIds);
-    }
-
-    const { count: totalCount, error: countError } = await countQuery;
-
-    if (countError && countError.code !== 'PGRST116') {
-      console.error('Count error:', countError);
-    }
-
-    // Apply pagination at database level
-    query = query.range(offset, offset + limit - 1);
-
-    const { data: paginatedDomains, error } = await query;
-
-    if (error) throw error;
 
     // Now fetch offerings only for the paginated results
     const domainIds = (paginatedDomains || []).map(d => d._id);

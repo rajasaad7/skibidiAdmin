@@ -206,6 +206,11 @@ export default function DomainsPage() {
 
       const url = `/api/domains?${params.toString()}`;
       const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
       if (data.success) {
         setDomains(data.domains);
@@ -215,14 +220,25 @@ export default function DomainsPage() {
         if (data.pagination) {
           setPagination(data.pagination);
         }
+      } else {
+        console.error('API returned error:', data.error);
+        // Don't update domains on error - keep showing previous data
       }
     } catch (error) {
       console.error('Error fetching domains:', error);
+      // Don't update domains on error - keep showing previous data
     } finally {
       setLoading(false);
     }
   };
 
+  // Reset page to 1 and clear selection when filter changes
+  useEffect(() => {
+    setPage(1);
+    setSelectedDomains(new Set());
+  }, [filter, showUncategorized]);
+
+  // Fetch domains when page, limit, or filter changes
   useEffect(() => {
     fetchDomains();
   }, [filter, page, pagination.limit, showUncategorized]);
@@ -405,10 +421,89 @@ export default function DomainsPage() {
     }
   };
 
-  const handleBulkApprovePending = async () => {
-    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
+  const selectAllDomainsInFilter = async () => {
+    try {
+      // Fetch all domain IDs for the current filter using the dedicated IDs endpoint
+      const params = new URLSearchParams();
 
-    if (selectedDomainsList.length === 0) {
+      // Note: with_owner and reseller_only filters need special handling since they're client-side
+      if (filter !== 'all' && filter !== 'with_owner' && filter !== 'reseller_only' && filter !== 'update_requests') {
+        params.append('status', filter);
+      }
+      if (filter === 'update_requests') {
+        params.append('updateRequests', 'true');
+      }
+      if (showUncategorized) {
+        params.append('uncategorized', 'true');
+      }
+      if (searchQuery.trim()) {
+        params.append('search', searchQuery.trim());
+      }
+
+      // For with_owner and reseller_only, we need to fetch all domains with offerings info
+      if (filter === 'with_owner' || filter === 'reseller_only') {
+        // Fetch in batches to avoid URI too long errors
+        const batchSize = 200;
+        let allDomainIds: string[] = [];
+        let currentPage = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const batchParams = new URLSearchParams();
+          if (showUncategorized) batchParams.append('uncategorized', 'true');
+          if (searchQuery.trim()) batchParams.append('search', searchQuery.trim());
+          batchParams.append('page', currentPage.toString());
+          batchParams.append('limit', batchSize.toString());
+
+          const response = await fetch(`/api/domains?${batchParams.toString()}`);
+          const data = await response.json();
+
+          if (!data.success || !data.domains || data.domains.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          // Filter domains based on with_owner or reseller_only
+          const filteredBatch = data.domains.filter((domain: Domain) => {
+            if (filter === 'with_owner') {
+              return domain.publisherOfferings.some(o => o.domainType === 'owner');
+            } else if (filter === 'reseller_only') {
+              return domain.publisherOfferings.some(o => o.domainType === 'reseller') &&
+                     !domain.publisherOfferings.some(o => o.domainType === 'owner');
+            }
+            return true;
+          });
+
+          allDomainIds = [...allDomainIds, ...filteredBatch.map((d: Domain) => d._id)];
+
+          if (data.domains.length < batchSize) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        }
+
+        setSelectedDomains(new Set(allDomainIds));
+      } else {
+        // Use the IDs endpoint for other filters
+        const response = await fetch(`/api/domains/ids?${params.toString()}`);
+        const data = await response.json();
+
+        if (data.success && data.domainIds) {
+          setSelectedDomains(new Set(data.domainIds));
+        }
+      }
+    } catch (error) {
+      console.error('Error selecting all domains:', error);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedDomains(new Set());
+  };
+
+  const handleBulkApprovePending = async () => {
+    if (selectedDomains.size === 0) {
       setAlertModal({
         isOpen: true,
         title: 'No Selection',
@@ -418,71 +513,86 @@ export default function DomainsPage() {
       return;
     }
 
-    // Count pending offerings only
-    let pendingOfferings = 0;
-    const updates: { domainId: string; offeringIndex: number }[] = [];
-
-    selectedDomainsList.forEach(domain => {
-      domain.publisherOfferings.forEach((offering, index) => {
-        if (offering.adminApproved === null || offering.adminApproved === undefined) {
-          pendingOfferings++;
-          updates.push({ domainId: domain._id, offeringIndex: index });
-        }
+    try {
+      // Get counts from server
+      const countResponse = await fetch('/api/domains/count-offerings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domainIds: Array.from(selectedDomains),
+          pendingOnly: true
+        })
       });
-    });
+      const countData = await countResponse.json();
 
-    if (pendingOfferings === 0) {
-      setAlertModal({
+      if (!countData.success) {
+        throw new Error('Failed to count offerings');
+      }
+
+      if (countData.pending === 0) {
+        setAlertModal({
+          isOpen: true,
+          title: 'No Pending Offerings',
+          message: 'No pending offerings found in selected domains',
+          type: 'info'
+        });
+        return;
+      }
+
+      setConfirmModal({
         isOpen: true,
-        title: 'No Pending Offerings',
-        message: 'No pending offerings found in selected domains',
-        type: 'info'
-      });
-      return;
-    }
-
-    setConfirmModal({
-      isOpen: true,
-      title: 'Approve Pending Offerings',
-      message: `Are you sure you want to approve ${pendingOfferings} PENDING offering(s) for ${selectedDomainsList.length} selected domain(s)?`,
-      confirmText: 'Approve',
-      cancelText: 'Cancel',
-      onConfirm: async () => {
-        try {
-          const promises = updates.map(update =>
-            fetch('/api/domains/approve-offering', {
+        title: 'Approve Pending Offerings',
+        message: `Are you sure you want to approve ${countData.pending} PENDING offering(s) for ${countData.domainCount} selected domain(s)?`,
+        confirmText: 'Approve',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
+            const response = await fetch('/api/domains/bulk-approve', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(update)
-            })
-          );
+              body: JSON.stringify({
+                domainIds: Array.from(selectedDomains),
+                approveAll: false
+              })
+            });
 
-          await Promise.all(promises);
-          setAlertModal({
-            isOpen: true,
-            title: 'Success',
-            message: `Successfully approved ${pendingOfferings} pending offering(s)`,
-            type: 'success'
-          });
-          fetchDomains();
-          setSelectedDomains(new Set());
-        } catch (error) {
-          console.error('Error bulk approving:', error);
-          setAlertModal({
-            isOpen: true,
-            title: 'Error',
-            message: 'Error approving offerings',
-            type: 'error'
-          });
+            const data = await response.json();
+            if (!data.success) {
+              throw new Error('Failed to approve offerings');
+            }
+
+            setAlertModal({
+              isOpen: true,
+              title: 'Success',
+              message: `Successfully approved ${data.count} pending offering(s)`,
+              type: 'success'
+            });
+            fetchDomains();
+            setSelectedDomains(new Set());
+          } catch (error) {
+            console.error('Error bulk approving:', error);
+            setAlertModal({
+              isOpen: true,
+              title: 'Error',
+              message: 'Error approving offerings',
+              type: 'error'
+            });
+          }
         }
-      }
-    });
+      });
+    } catch (error) {
+      console.error('Error counting offerings:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error counting offerings',
+        type: 'error'
+      });
+    }
   };
 
   const handleBulkApproveAll = async () => {
-    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
-
-    if (selectedDomainsList.length === 0) {
+    if (selectedDomains.size === 0) {
       setAlertModal({
         isOpen: true,
         title: 'No Selection',
@@ -492,63 +602,76 @@ export default function DomainsPage() {
       return;
     }
 
-    // Count total offerings to approve
-    let totalOfferings = 0;
-    selectedDomainsList.forEach(domain => {
-      totalOfferings += domain.publisherOfferings.length;
-    });
+    try {
+      // Get counts from server
+      const countResponse = await fetch('/api/domains/count-offerings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domainIds: Array.from(selectedDomains),
+          pendingOnly: false
+        })
+      });
+      const countData = await countResponse.json();
 
-    setConfirmModal({
-      isOpen: true,
-      title: 'Approve All Offerings',
-      message: `Are you sure you want to approve ALL publisher offerings (including already approved/rejected) for ${selectedDomainsList.length} selected domain(s)? This will approve ${totalOfferings} offering(s) in total.`,
-      confirmText: 'Approve All',
-      cancelText: 'Cancel',
-      onConfirm: async () => {
-        try {
-          const promises: Promise<any>[] = [];
-
-          selectedDomainsList.forEach(domain => {
-            domain.publisherOfferings.forEach((offering, index) => {
-              promises.push(
-                fetch('/api/domains/approve-offering', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    domainId: domain._id,
-                    offeringIndex: index
-                  })
-                })
-              );
-            });
-          });
-
-          await Promise.all(promises);
-          setAlertModal({
-            isOpen: true,
-            title: 'Success',
-            message: `Successfully approved ${totalOfferings} offering(s) across ${selectedDomainsList.length} domain(s)`,
-            type: 'success'
-          });
-          fetchDomains();
-          setSelectedDomains(new Set());
-        } catch (error) {
-          console.error('Error bulk approving:', error);
-          setAlertModal({
-            isOpen: true,
-            title: 'Error',
-            message: 'Error approving offerings',
-            type: 'error'
-          });
-        }
+      if (!countData.success) {
+        throw new Error('Failed to count offerings');
       }
-    });
+
+      setConfirmModal({
+        isOpen: true,
+        title: 'Approve All Offerings',
+        message: `Are you sure you want to approve ALL publisher offerings (including already approved/rejected) for ${countData.domainCount} selected domain(s)? This will approve ${countData.total} offering(s) in total.`,
+        confirmText: 'Approve All',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          try {
+            const response = await fetch('/api/domains/bulk-approve', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                domainIds: Array.from(selectedDomains),
+                approveAll: true
+              })
+            });
+
+            const data = await response.json();
+            if (!data.success) {
+              throw new Error('Failed to approve offerings');
+            }
+
+            setAlertModal({
+              isOpen: true,
+              title: 'Success',
+              message: `Successfully approved ${data.count} offering(s) across ${data.domainCount} domain(s)`,
+              type: 'success'
+            });
+            fetchDomains();
+            setSelectedDomains(new Set());
+          } catch (error) {
+            console.error('Error bulk approving:', error);
+            setAlertModal({
+              isOpen: true,
+              title: 'Error',
+              message: 'Error approving offerings',
+              type: 'error'
+            });
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error counting offerings:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error counting offerings',
+        type: 'error'
+      });
+    }
   };
 
   const handleBulkRejectPending = async () => {
-    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
-
-    if (selectedDomainsList.length === 0) {
+    if (selectedDomains.size === 0) {
       setAlertModal({
         isOpen: true,
         title: 'No Selection',
@@ -558,71 +681,87 @@ export default function DomainsPage() {
       return;
     }
 
-    // Count pending offerings only
-    let pendingOfferings = 0;
-    const updates: { domainId: string; offeringIndex: number }[] = [];
-
-    selectedDomainsList.forEach(domain => {
-      domain.publisherOfferings.forEach((offering, index) => {
-        if (offering.adminApproved === null || offering.adminApproved === undefined) {
-          pendingOfferings++;
-          updates.push({ domainId: domain._id, offeringIndex: index });
-        }
+    try {
+      // Get counts from server
+      const countResponse = await fetch('/api/domains/count-offerings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domainIds: Array.from(selectedDomains),
+          pendingOnly: true
+        })
       });
-    });
+      const countData = await countResponse.json();
 
-    if (pendingOfferings === 0) {
-      setAlertModal({
+      if (!countData.success) {
+        throw new Error('Failed to count offerings');
+      }
+
+      if (countData.pending === 0) {
+        setAlertModal({
+          isOpen: true,
+          title: 'No Pending Offerings',
+          message: 'No pending offerings found in selected domains',
+          type: 'info'
+        });
+        return;
+      }
+
+      setInputModal({
         isOpen: true,
-        title: 'No Pending Offerings',
-        message: 'No pending offerings found in selected domains',
-        type: 'info'
-      });
-      return;
-    }
-
-    setInputModal({
-      isOpen: true,
-      title: 'Reject Pending Offerings',
-      message: `Enter rejection reason for ${pendingOfferings} PENDING offering(s):`,
-      placeholder: 'Enter rejection reason...',
-      onConfirm: async (reason) => {
-        if (!reason) return;
-        try {
-          const promises = updates.map(update =>
-            fetch('/api/domains/reject-offering', {
+        title: 'Reject Pending Offerings',
+        message: `Enter rejection reason for ${countData.pending} PENDING offering(s):`,
+        placeholder: 'Enter rejection reason...',
+        onConfirm: async (reason) => {
+          if (!reason) return;
+          try {
+            const response = await fetch('/api/domains/bulk-reject', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...update, reason })
-            })
-          );
+              body: JSON.stringify({
+                domainIds: Array.from(selectedDomains),
+                rejectAll: false,
+                reason: reason
+              })
+            });
 
-          await Promise.all(promises);
-          setAlertModal({
-            isOpen: true,
-            title: 'Success',
-            message: `Successfully rejected ${pendingOfferings} pending offering(s)`,
-            type: 'success'
-          });
-          fetchDomains();
-          setSelectedDomains(new Set());
-        } catch (error) {
-          console.error('Error bulk rejecting:', error);
-          setAlertModal({
-            isOpen: true,
-            title: 'Error',
-            message: 'Error rejecting offerings',
-            type: 'error'
-          });
+            const data = await response.json();
+            if (!data.success) {
+              throw new Error('Failed to reject offerings');
+            }
+
+            setAlertModal({
+              isOpen: true,
+              title: 'Success',
+              message: `Successfully rejected ${data.count} pending offering(s)`,
+              type: 'success'
+            });
+            fetchDomains();
+            setSelectedDomains(new Set());
+          } catch (error) {
+            console.error('Error bulk rejecting:', error);
+            setAlertModal({
+              isOpen: true,
+              title: 'Error',
+              message: 'Error rejecting offerings',
+              type: 'error'
+            });
+          }
         }
-      }
-    });
+      });
+    } catch (error) {
+      console.error('Error counting offerings:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error counting offerings',
+        type: 'error'
+      });
+    }
   };
 
   const handleBulkRejectAll = async () => {
-    const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
-
-    if (selectedDomainsList.length === 0) {
+    if (selectedDomains.size === 0) {
       setAlertModal({
         isOpen: true,
         title: 'No Selection',
@@ -632,58 +771,73 @@ export default function DomainsPage() {
       return;
     }
 
-    // Count total offerings to reject
-    let totalOfferings = 0;
-    selectedDomainsList.forEach(domain => {
-      totalOfferings += domain.publisherOfferings.length;
-    });
+    try {
+      // Get counts from server
+      const countResponse = await fetch('/api/domains/count-offerings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domainIds: Array.from(selectedDomains),
+          pendingOnly: false
+        })
+      });
+      const countData = await countResponse.json();
 
-    setInputModal({
-      isOpen: true,
-      title: 'Reject All Offerings',
-      message: `Enter rejection reason for ALL ${totalOfferings} offering(s) (including already approved/rejected):`,
-      placeholder: 'Enter rejection reason...',
-      onConfirm: async (reason) => {
-        if (!reason) return;
-        try {
-          const promises: Promise<any>[] = [];
-
-          selectedDomainsList.forEach(domain => {
-            domain.publisherOfferings.forEach((offering, index) => {
-              promises.push(
-                fetch('/api/domains/reject-offering', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    domainId: domain._id,
-                    offeringIndex: index,
-                    reason: reason
-                  })
-                })
-              );
-            });
-          });
-
-          await Promise.all(promises);
-          setAlertModal({
-            isOpen: true,
-            title: 'Success',
-            message: `Successfully rejected ${totalOfferings} offering(s) across ${selectedDomainsList.length} domain(s)`,
-            type: 'success'
-          });
-          fetchDomains();
-          setSelectedDomains(new Set());
-        } catch (error) {
-          console.error('Error bulk rejecting:', error);
-          setAlertModal({
-            isOpen: true,
-            title: 'Error',
-            message: 'Error rejecting offerings',
-            type: 'error'
-          });
-        }
+      if (!countData.success) {
+        throw new Error('Failed to count offerings');
       }
-    });
+
+      setInputModal({
+        isOpen: true,
+        title: 'Reject All Offerings',
+        message: `Enter rejection reason for ALL ${countData.total} offering(s) (including already approved/rejected):`,
+        placeholder: 'Enter rejection reason...',
+        onConfirm: async (reason) => {
+          if (!reason) return;
+          try {
+            const response = await fetch('/api/domains/bulk-reject', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                domainIds: Array.from(selectedDomains),
+                rejectAll: true,
+                reason: reason
+              })
+            });
+
+            const data = await response.json();
+            if (!data.success) {
+              throw new Error('Failed to reject offerings');
+            }
+
+            setAlertModal({
+              isOpen: true,
+              title: 'Success',
+              message: `Successfully rejected ${data.count} offering(s) across ${data.domainCount} domain(s)`,
+              type: 'success'
+            });
+            fetchDomains();
+            setSelectedDomains(new Set());
+          } catch (error) {
+            console.error('Error bulk rejecting:', error);
+            setAlertModal({
+              isOpen: true,
+              title: 'Error',
+              message: 'Error rejecting offerings',
+              type: 'error'
+            });
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error counting offerings:', error);
+      setAlertModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error counting offerings',
+        type: 'error'
+      });
+    }
   };
 
   const exportToCSV = () => {
@@ -2829,6 +2983,34 @@ export default function DomainsPage() {
           </div>
         ) : (
           <>
+            {/* Selection Info Banner */}
+            {selectedDomains.size > 0 && selectedDomains.size < pagination.total && (
+              <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
+                <div className="text-sm text-blue-800">
+                  <span className="font-semibold">{selectedDomains.size}</span> domain(s) selected on this page.
+                </div>
+                <button
+                  onClick={selectAllDomainsInFilter}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-semibold underline"
+                >
+                  Select all {pagination.total} domains
+                </button>
+              </div>
+            )}
+            {selectedDomains.size === pagination.total && pagination.total > getFilteredDomains().length && (
+              <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
+                <div className="text-sm text-blue-800">
+                  <span className="font-semibold">All {pagination.total} domains</span> are selected.
+                </div>
+                <button
+                  onClick={clearSelection}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-semibold underline"
+                >
+                  Clear selection
+                </button>
+              </div>
+            )}
+
             {/* Table Header */}
             <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
               <div className="flex items-center">
