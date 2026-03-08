@@ -959,7 +959,10 @@ export default function OrdersPage() {
               </div>
 
               {/* TAT (Turnaround Time) Status */}
-              {editingOrder.deadlineAt && !editingOrder.completedAt && (() => {
+              {editingOrder.deadlineAt && !editingOrder.completedAt &&
+               editingOrder.status !== 'pending_payment' &&
+               editingOrder.status !== 'completed' &&
+               editingOrder.status !== 'refunded' && (() => {
                 const tatInfo = calculateTATRemaining(editingOrder);
                 if (!tatInfo) return null;
 

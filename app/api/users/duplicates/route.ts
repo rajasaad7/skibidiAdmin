@@ -71,15 +71,15 @@ export async function GET(request: NextRequest) {
 
     // Weight system for different signals (higher = more important for duplicate detection)
     const SIGNAL_WEIGHTS = {
-      contactValue: 100,        // Same contact = almost certain duplicate
-      lastActiveDeviceFP: 90,   // Same current device fingerprint = very strong
-      lastActiveCanvasFP: 85,   // Same current canvas = very strong
-      lastActiveWebGLFP: 85,    // Same current WebGL = very strong
-      lastActiveIP: 70,         // Same current IP = strong indicator
-      signupDeviceFP: 60,       // Same signup device = moderate
-      signupCanvasFP: 55,       // Same signup canvas = moderate
-      signupWebGLFP: 55,        // Same signup WebGL = moderate
-      signupIP: 40,             // Same signup IP = weak (could be shared network)
+      contactValue: 100,        // Same contact = almost certain duplicate (HIGH RISK)
+      lastActiveIP: 95,         // Same current IP = very strong indicator (HIGH RISK)
+      signupIP: 90,             // Same signup IP = strong indicator (HIGH RISK)
+      lastActiveDeviceFP: 30,   // Same current device fingerprint = low (many users have similar devices)
+      lastActiveCanvasFP: 25,   // Same current canvas = low (common for same browser/OS)
+      lastActiveWebGLFP: 25,    // Same current WebGL = low (common for same hardware)
+      signupDeviceFP: 20,       // Same signup device = low
+      signupCanvasFP: 20,       // Same signup canvas = low
+      signupWebGLFP: 20,        // Same signup WebGL = low
     };
 
     // Risk multipliers
@@ -334,31 +334,27 @@ export async function GET(request: NextRequest) {
         }, 0);
         group.avgRiskScore = Math.round(totalRiskScore / group.users.length);
 
-        // Determine risk level using composite score and other factors
-        const scoreThresholds = {
-          critical: 400,  // Multiple strong signals + risk multipliers
-          high: 250,      // Strong signals or multiple moderate signals
-          medium: 100,    // Moderate signals
-        };
+        // Determine risk level based on priority signals
+        // HIGH RISK: IP matches or Contact matches (these are the main indicators)
+        const hasIPMatch = group.matchingSignals.includes('Last Active IP') ||
+                          group.matchingSignals.includes('Signup IP');
+        const hasContactMatch = group.matchingSignals.includes('Contact Details');
 
-        if (
-          group.compositeScore >= scoreThresholds.critical ||
-          (group.compositeScore >= scoreThresholds.high && group.hasSuspiciousActivity) ||
-          (group.matchingSignals.includes('Contact Details') && group.matchingSignals.length >= 2) ||
-          (group.matchingSignals.includes('Last Active Device Fingerprint') &&
-           group.matchingSignals.includes('Last Active Canvas Fingerprint') &&
-           group.matchingSignals.includes('Last Active WebGL Fingerprint'))
-        ) {
+        // Count only fingerprint matches (excluding IP and Contact)
+        const fingerprintSignals = group.matchingSignals.filter((signal: string) =>
+          signal !== 'Last Active IP' &&
+          signal !== 'Signup IP' &&
+          signal !== 'Contact Details'
+        );
+
+        if (hasContactMatch || hasIPMatch) {
+          // Contact or IP match = HIGH RISK (main indicators)
           group.riskLevel = 'high';
-        } else if (
-          group.compositeScore >= scoreThresholds.medium ||
-          group.matchingSignals.length >= 3 ||
-          group.hasVPN ||
-          group.hasProxy ||
-          group.avgRiskScore > 40
-        ) {
+        } else if (fingerprintSignals.length >= 3) {
+          // 3-4+ fingerprint matches = MEDIUM RISK
           group.riskLevel = 'medium';
         } else {
+          // 1-2 fingerprint matches only = LOW RISK
           group.riskLevel = 'low';
         }
 
