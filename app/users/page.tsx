@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck, Info, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck, Info, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, LogIn, Copy, Check, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
 interface User {
   _id: string;
@@ -60,6 +61,9 @@ export default function UsersPage() {
     advertisers: 0,
     publishers: 0
   });
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginUrl, setLoginUrl] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -121,8 +125,108 @@ export default function UsersPage() {
     fetchUsers();
   };
 
+  const handleLogin = async (userId: string, userName: string) => {
+    try {
+      const response = await fetch(`/api/users/${userId}/generate-login-token`, {
+        method: 'POST'
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.loginUrl) {
+        setLoginUrl(data.loginUrl);
+        setShowLoginModal(true);
+        setCopied(false);
+        toast.success(`Login link generated for ${userName}`);
+      } else {
+        toast.error(data.error || 'Failed to generate login link');
+      }
+    } catch (error) {
+      console.error('Error generating login link:', error);
+      toast.error('Failed to generate login link');
+    }
+  };
+
+  const handleCopyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(loginUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      toast.error('Failed to copy to clipboard');
+    }
+  };
+
   return (
     <div>
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-3xl w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">Admin Login Access</h2>
+              <button
+                onClick={() => setShowLoginModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-5">
+              Copy this secure link and paste it in an <strong>incognito window</strong>. The link expires in 5 minutes for security.
+            </p>
+
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                Secure Login URL
+              </label>
+              <div className="flex items-start gap-3">
+                <div className="flex-1 bg-gray-50 border-2 border-gray-200 rounded-lg px-4 py-3 font-mono text-sm text-gray-800 break-all max-h-24 overflow-y-auto">
+                  {loginUrl}
+                </div>
+                <button
+                  onClick={handleCopyUrl}
+                  className={`inline-flex items-center gap-2 px-5 py-3 rounded-lg font-semibold transition-all shadow-md flex-shrink-0 ${
+                    copied
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg'
+                  }`}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border-l-4 border-amber-400 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-amber-600 mt-0.5">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-900 mb-1">Security Notice</p>
+                  <p className="text-sm text-amber-800">
+                    This link provides full access to the user's account. Use incognito mode to prevent session conflicts.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
         <h1 className="text-lg md:text-3xl font-bold text-gray-900">User Management</h1>
         <button
@@ -399,14 +503,24 @@ export default function UsersPage() {
                       {user.lastActive ? new Date(user.lastActive).toLocaleDateString() : 'Never'}
                     </td>
                     <td className="px-6 py-4">
-                      <button
-                        onClick={() => router.push(`/users/${user._id}`)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition"
-                        title="View user details"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        Details
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => router.push(`/users/${user._id}`)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition"
+                          title="View user details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Details
+                        </button>
+                        <button
+                          onClick={() => handleLogin(user._id, user.fullName)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition"
+                          title="Login as user"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          Login
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -443,7 +557,7 @@ export default function UsersPage() {
                     if (p === pagination.totalPages - 1 && page < pagination.totalPages - 2) return 'ellipsis-end';
                     return false;
                   })
-                  .map((p, idx, arr) => {
+                  .map((p) => {
                     if (typeof p === 'string') {
                       return <span key={p} className="px-2 text-gray-400">...</span>;
                     }
