@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase, Shield } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase, Shield, Flag } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -15,7 +15,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, updateRequests: 0, pendingPayouts: 0, newWhiteLabelLeads: 0 });
+  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, updateRequests: 0, pendingPayouts: 0, newWhiteLabelLeads: 0, pendingModerationRequests: 0 });
 
   useEffect(() => {
     setIsNavigating(false);
@@ -66,6 +66,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
     { href: '/indexer', icon: Zap, label: 'Indexer', roles: ['super_admin'] },
     { href: '/contacts', icon: Mail, label: 'Contact Submissions', roles: ['super_admin', 'colleague'] },
     { href: '/white-label-leads', icon: Briefcase, label: 'White Label Leads', roles: ['super_admin', 'colleague'] },
+    { href: '/moderation-requests', icon: Flag, label: 'Moderation Requests', roles: ['super_admin'] },
     { href: '/bugs', icon: Bug, label: 'Bug Reports', roles: ['super_admin'] },
   ];
 
@@ -147,6 +148,11 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
                   {item.href === '/white-label-leads' && notifications.newWhiteLabelLeads > 0 && (
                     <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
                       {notifications.newWhiteLabelLeads}
+                    </span>
+                  )}
+                  {item.href === '/moderation-requests' && notifications.pendingModerationRequests > 0 && (
+                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
+                      {notifications.pendingModerationRequests}
                     </span>
                   )}
                   {item.href === '/domains' && (notifications.pendingDomains > 0 || notifications.updateRequests > 0) && (

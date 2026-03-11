@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET() {
   try {
     // Fetch all counts in parallel for better performance
-    const [contactsResult, bugsResult, statsResult, payoutsResult, whiteLabelLeadsResult] = await Promise.all([
+    const [contactsResult, bugsResult, statsResult, payoutsResult, whiteLabelLeadsResult, moderationRequestsResult] = await Promise.all([
       // Get count of new contacts (status = 'new' or 'pending')
       supabase
         .from('contacts')
@@ -30,6 +30,12 @@ export async function GET() {
       supabase
         .from('white_label_leads')
         .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending'),
+
+      // Get count of pending moderation requests (status = 'pending')
+      supabase
+        .from('moderation_requests')
+        .select('*', { count: 'exact', head: true })
         .eq('status', 'pending')
     ]);
 
@@ -48,6 +54,9 @@ export async function GET() {
     if (whiteLabelLeadsResult.error) {
       console.error('White label leads error:', whiteLabelLeadsResult.error);
     }
+    if (moderationRequestsResult.error) {
+      console.error('Moderation requests error:', moderationRequestsResult.error);
+    }
 
     // RPC returns an array with one row, so we need to get the first element
     const statsRow = statsResult.data && statsResult.data.length > 0 ? statsResult.data[0] : null;
@@ -62,6 +71,7 @@ export async function GET() {
         updateRequests: stats.updateRequests || 0,
         pendingPayouts: payoutsResult.count || 0,
         newWhiteLabelLeads: whiteLabelLeadsResult.count || 0,
+        pendingModerationRequests: moderationRequestsResult.count || 0,
       }
     });
   } catch (error) {
