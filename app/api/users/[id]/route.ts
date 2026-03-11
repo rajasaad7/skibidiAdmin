@@ -72,7 +72,7 @@ export async function GET(
       completedOrdersRes,
       publisherOrdersDataRes,
       domainsRes,
-      domainsDataRes,
+      publisherDomainsRes,
       verifiedDomainsRes,
       earningsRes
     ] = await Promise.all([
@@ -113,10 +113,12 @@ export async function GET(
       // Get marketplace orders (as publisher/seller)
       supabase.from('marketplace_orders').select('_id, totalPrice, platformFee, publisherEarnings, status, createdAt, updatedAt, serviceType, domainId, domains(domainName), buyerId').eq('publisherId', userId).order('createdAt', { ascending: false }),
 
-      // Get domains (as publisher)
+      // Get domains owned by user
       supabase.from('domains').select('_id').eq('userId', userId),
-      // Get domains with full details
-      supabase.from('domains').select('_id, domainName, verificationStatus, createdAt, categoryId, domain_categories(name)').eq('userId', userId).order('createdAt', { ascending: false }),
+      // Get domain offerings where user is publisher (includes reseller domains)
+      supabase.from('domain_offerings').select('"domainId"').eq('"publisherId"', userId),
+      // Get domains with full details - will be fetched after we combine domain IDs
+      Promise.resolve({ data: [] }), // Placeholder, will fetch after combining IDs
       supabase.from('domains').select('_id', { count: 'exact', head: true }).eq('userId', userId).eq('verificationStatus', 'verified'),
 
       // Get earnings (as publisher)
@@ -138,12 +140,28 @@ export async function GET(
       sum + Number(order.totalPrice || 0), 0
     );
 
-    const totalEarnings = (earningsRes.data || []).reduce((sum, order) =>
+    const totalEarnings = (earningsRes.data || []).reduce((sum, order: any) =>
       sum + Number(order.publisherEarnings || 0), 0
     );
 
+    // Combine domain IDs from both owned domains and domain offerings where user is publisher
+    const ownedDomainIds = (domainsRes.data || []).map((d: any) => d._id);
+    const publisherDomainIds = (publisherDomainsRes.data || []).map((d: any) => d.domainId);
+    const allDomainIds = [...new Set([...ownedDomainIds, ...publisherDomainIds])];
+
+    // Fetch full domain details for all domains
+    let domainsWithDetails: any[] = [];
+    if (allDomainIds.length > 0) {
+      const { data: domainsData } = await supabase
+        .from('domains')
+        .select('_id, domainName, verificationStatus, createdAt, categoryId, domain_categories(name), userId')
+        .in('_id', allDomainIds)
+        .order('createdAt', { ascending: false });
+      domainsWithDetails = domainsData || [];
+    }
+
     // Fetch domain offerings from the separate table
-    const domainIds = (domainsDataRes.data || []).map((d: any) => d._id);
+    const domainIds = allDomainIds;
     let offeringsMap = new Map<string, any[]>();
 
     if (domainIds.length > 0) {
@@ -189,9 +207,9 @@ export async function GET(
       });
     }
 
-    // Count verified domains
+    // Count verified domains (domains with at least one approved offering)
     let verifiedDomainsCount = 0;
-    (domainsRes.data || []).forEach((domain: any) => {
+    domainsWithDetails.forEach((domain: any) => {
       const offerings = offeringsMap.get(domain._id) || [];
       if (offerings.some((o: any) => o.adminApproved === true)) {
         verifiedDomainsCount++;
@@ -219,7 +237,7 @@ export async function GET(
     }));
 
     // Attach offerings to domains
-    const domainsWithOfferings = (domainsDataRes.data || []).map((domain: any) => ({
+    const domainsWithOfferings = domainsWithDetails.map((domain: any) => ({
       ...domain,
       publisherOfferings: offeringsMap.get(domain._id) || []
     }));
@@ -244,7 +262,7 @@ export async function GET(
           totalOrders,
           completedOrders,
           totalSpent,
-          totalDomains: domainsRes.data?.length || 0,
+          totalDomains: allDomainIds.length,
           verifiedDomains: verifiedDomainsCount,
           totalEarnings
         },
