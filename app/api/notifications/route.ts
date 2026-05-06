@@ -20,11 +20,12 @@ export async function GET() {
       // Get domain stats using RPC function (same as domains page)
       supabase.rpc('get_domain_stats'),
 
-      // Get count of pending payouts (status = 'pending' or 'requested')
+      // Pending payouts older than 7 days — these are the requests that need action
       supabase
         .from('publisher_payouts')
         .select('*', { count: 'exact', head: true })
-        .in('status', ['pending', 'processing']),
+        .eq('status', 'pending')
+        .lte('createdAt', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
 
       // Get count of pending white label leads (status = 'pending')
       supabase

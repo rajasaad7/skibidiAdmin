@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, CheckCircle, XCircle, DollarSign, User, TrendingUp, AlertCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, DollarSign, User, TrendingUp, AlertCircle, Eye, Copy, Check, X } from 'lucide-react';
+
+interface PaymentDetails {
+  paypalEmail?: string | null;
+  iban?: string | null;
+  bankName?: string | null;
+  swiftCode?: string | null;
+  accountHolderName?: string | null;
+  [key: string]: any;
+}
 
 interface PublisherEarnings {
   _id: string;
@@ -30,6 +39,7 @@ interface Payout {
   processedAt?: string;
   transactionId?: string;
   notes?: string;
+  paymentDetails?: PaymentDetails | null;
   user?: {
     _id: string;
     email: string;
@@ -54,7 +64,6 @@ export default function PayoutsPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('pending');
-  const [processingId, setProcessingId] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState('');
   const [notes, setNotes] = useState('');
   const [stats, setStats] = useState({
@@ -65,6 +74,45 @@ export default function PayoutsPage() {
     completedAmount: 0,
     failed: 0
   });
+
+  // Payment details modal
+  const [detailsPayout, setDetailsPayout] = useState<Payout | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [actionLoading, setActionLoading] = useState<'approve' | 'reject' | null>(null);
+
+  const closeDetailsModal = () => {
+    setDetailsPayout(null);
+    setTransactionId('');
+    setNotes('');
+    setRejectionReason('');
+    setActionLoading(null);
+  };
+
+  // A pending payout that has been waiting more than 7 days is shown as "processing".
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const getDisplayStatus = (payout: Payout) => {
+    if (
+      payout.status === 'pending' &&
+      Date.now() - new Date(payout.createdAt).getTime() >= SEVEN_DAYS_MS
+    ) {
+      return 'processing';
+    }
+    return payout.status;
+  };
+
+  const copyValue = async (key: string, value: string) => {
+    // IBANs are commonly stored with spaces for readability; strip them on copy
+    // so the clipboard value is paste-ready into banking forms.
+    const toCopy = key === 'iban' ? value.replace(/\s+/g, '') : value;
+    try {
+      await navigator.clipboard.writeText(toCopy);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1500);
+    } catch (e) {
+      console.error('Failed to copy', e);
+    }
+  };
 
   const fetchPublisherEarnings = async () => {
     try {
@@ -117,6 +165,7 @@ export default function PayoutsPage() {
   };
 
   const handleMarkAsPaid = async (payoutId: string) => {
+    setActionLoading('approve');
     try {
       const response = await fetch('/api/payouts/mark-paid', {
         method: 'POST',
@@ -124,21 +173,22 @@ export default function PayoutsPage() {
         body: JSON.stringify({ payoutId, transactionId, notes })
       });
       if (response.ok) {
-        setProcessingId(null);
-        setTransactionId('');
-        setNotes('');
+        closeDetailsModal();
         fetchPayouts();
       }
     } catch (error) {
       console.error('Error marking payout as paid:', error);
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleMarkAsFailed = async (payoutId: string, reason: string) => {
     if (!reason) {
-      alert('Please provide a reason for failure');
+      alert('Please provide a reason for rejection');
       return;
     }
+    setActionLoading('reject');
     try {
       const response = await fetch('/api/payouts/mark-failed', {
         method: 'POST',
@@ -146,10 +196,13 @@ export default function PayoutsPage() {
         body: JSON.stringify({ payoutId, reason })
       });
       if (response.ok) {
+        closeDetailsModal();
         fetchPayouts();
       }
     } catch (error) {
       console.error('Error marking payout as failed:', error);
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -454,13 +507,19 @@ export default function PayoutsPage() {
                           ${payout.amount.toFixed(2)}
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            payout.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            payout.status === 'pending' ? 'bg-orange-100 text-orange-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {payout.status}
-                          </span>
+                          {(() => {
+                            const display = getDisplayStatus(payout);
+                            const cls =
+                              display === 'completed' ? 'bg-green-100 text-green-800' :
+                              display === 'processing' ? 'bg-blue-100 text-blue-800' :
+                              display === 'pending' ? 'bg-orange-100 text-orange-800' :
+                              'bg-red-100 text-red-800';
+                            return (
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${cls}`}>
+                                {display}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600">
                           {new Date(payout.createdAt).toLocaleDateString()}
@@ -469,66 +528,16 @@ export default function PayoutsPage() {
                           {payout.processedAt ? new Date(payout.processedAt).toLocaleDateString() : '-'}
                         </td>
                         <td className="px-6 py-4">
-                          {payout.status === 'pending' && (
-                            <div className="flex items-center justify-end gap-2">
-                              {processingId === payout._id ? (
-                                <div className="flex flex-col gap-2">
-                                  <input
-                                    type="text"
-                                    value={transactionId}
-                                    onChange={(e) => setTransactionId(e.target.value)}
-                                    placeholder="Transaction ID (optional)"
-                                    className="px-2 py-1 text-xs border border-gray-300 rounded"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={notes}
-                                    onChange={(e) => setNotes(e.target.value)}
-                                    placeholder="Notes (optional)"
-                                    className="px-2 py-1 text-xs border border-gray-300 rounded"
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => handleMarkAsPaid(payout._id)}
-                                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                                    >
-                                      Confirm
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setProcessingId(null);
-                                        setTransactionId('');
-                                        setNotes('');
-                                      }}
-                                      className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  <button
-                                    onClick={() => setProcessingId(payout._id)}
-                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
-                                    title="Mark as Paid"
-                                  >
-                                    <CheckCircle className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      const reason = prompt('Reason for failure:');
-                                      if (reason) handleMarkAsFailed(payout._id, reason);
-                                    }}
-                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                    title="Mark as Failed"
-                                  >
-                                    <XCircle className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setDetailsPayout(payout)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
+                              title="View details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              Details
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -538,6 +547,162 @@ export default function PayoutsPage() {
             </div>
           </div>
         </>
+      )}
+
+      {detailsPayout && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Payout Details</h3>
+                <p className="text-sm text-gray-600 mt-0.5">
+                  {detailsPayout.user?.fullName || 'Unknown'} · ${detailsPayout.amount.toFixed(2)} ·{' '}
+                  {(() => {
+                    const display = getDisplayStatus(detailsPayout);
+                    const cls =
+                      display === 'completed' ? 'bg-green-100 text-green-800' :
+                      display === 'processing' ? 'bg-blue-100 text-blue-800' :
+                      display === 'pending' ? 'bg-orange-100 text-orange-800' :
+                      'bg-red-100 text-red-800';
+                    return (
+                      <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${cls}`}>
+                        {display}
+                      </span>
+                    );
+                  })()}
+                </p>
+              </div>
+              <button
+                onClick={closeDetailsModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 mb-3">Payment Details</h4>
+                <div className="space-y-3">
+                  {(() => {
+                    const pd = detailsPayout.paymentDetails || {};
+                    const fields: { label: string; key: string; value: string | null | undefined }[] = [
+                      { label: 'PayPal Email', key: 'paypalEmail', value: pd.paypalEmail },
+                      { label: 'Account Holder', key: 'accountHolderName', value: pd.accountHolderName },
+                      { label: 'Bank Name', key: 'bankName', value: pd.bankName },
+                      { label: 'IBAN', key: 'iban', value: pd.iban },
+                      { label: 'SWIFT / BIC', key: 'swiftCode', value: pd.swiftCode },
+                    ];
+                    const populated = fields.filter((f) => f.value && String(f.value).trim() !== '');
+
+                    if (populated.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-500 text-center py-4 border border-dashed border-gray-200 rounded-lg">
+                          No payment details on file.
+                        </p>
+                      );
+                    }
+
+                    return populated.map((f) => (
+                      <div key={f.key} className="border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                          {f.label}
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm text-gray-900 break-all font-mono">{f.value}</div>
+                          <button
+                            onClick={() => copyValue(f.key, String(f.value))}
+                            className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100 transition"
+                            title="Copy"
+                          >
+                            {copiedKey === f.key ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" /> Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" /> Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+
+              {detailsPayout.status === 'pending' ? (
+                <div className="border-t border-gray-200 pt-5 space-y-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Approve Payout</h4>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={transactionId}
+                        onChange={(e) => setTransactionId(e.target.value)}
+                        placeholder="Transaction ID (optional)"
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Notes (optional)"
+                        rows={2}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <button
+                        onClick={() => handleMarkAsPaid(detailsPayout._id)}
+                        disabled={actionLoading !== null}
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        {actionLoading === 'approve' ? 'Approving…' : 'Approve & Mark Paid'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Reject Payout</h4>
+                    <div className="space-y-2">
+                      <textarea
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        placeholder="Reason for rejection (required)"
+                        rows={2}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      />
+                      <button
+                        onClick={() => handleMarkAsFailed(detailsPayout._id, rejectionReason.trim())}
+                        disabled={actionLoading !== null || !rejectionReason.trim()}
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        {actionLoading === 'reject' ? 'Rejecting…' : 'Reject Payout'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                (detailsPayout.transactionId || detailsPayout.notes) && (
+                  <div className="border-t border-gray-200 pt-5 space-y-2">
+                    <h4 className="text-sm font-semibold text-gray-900">Processing Info</h4>
+                    {detailsPayout.transactionId && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-medium">Transaction ID:</span> {detailsPayout.transactionId}
+                      </p>
+                    )}
+                    {detailsPayout.notes && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-medium">Notes:</span> {detailsPayout.notes}
+                      </p>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

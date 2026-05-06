@@ -3,25 +3,47 @@ import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
-    // Use RPC function for maximum performance
-    const { data, error } = await supabase.rpc('get_order_stats');
+    const nowIso = new Date().toISOString();
+    const terminalStatuses = ['pending_payment', 'completed', 'refunded', 'cancelled'];
 
-    if (error) throw error;
+    const countQuery = (build: (q: any) => any) =>
+      build(supabase.from('marketplace_orders').select('_id', { count: 'exact', head: true }));
 
-    // RPC returns array with one row
-    const statsRow = data && data.length > 0 ? data[0] : null;
+    const [
+      allRes,
+      paidRes,
+      overdueRes,
+      acceptedRes,
+      submittedRes,
+      completedRes,
+      refundedRes,
+      guestPostRes,
+      linkInsertionRes,
+      featuredDomainRes,
+    ] = await Promise.all([
+      countQuery((q) => q),
+      countQuery((q) => q.eq('status', 'paid')),
+      countQuery((q) => q.lt('deadlineAt', nowIso).not('status', 'in', `(${terminalStatuses.join(',')})`)),
+      countQuery((q) => q.eq('status', 'accepted')),
+      countQuery((q) => q.eq('status', 'submitted')),
+      countQuery((q) => q.eq('status', 'completed')),
+      countQuery((q) => q.eq('status', 'refunded')),
+      countQuery((q) => q.eq('serviceType', 'guest_post')),
+      countQuery((q) => q.eq('serviceType', 'link_insertion')),
+      countQuery((q) => q.eq('serviceType', 'featured_domain')),
+    ]);
 
     const stats = {
-      all: Number(statsRow?.total || 0),
-      paid: Number(statsRow?.paid || 0),
-      in_progress: Number(statsRow?.in_progress || 0),
-      submitted: Number(statsRow?.submitted || 0),
-      completed: Number(statsRow?.completed || 0),
-      cancelled: Number(statsRow?.cancelled || 0),
-      refunded: Number(statsRow?.refunded || 0),
-      guest_post: Number(statsRow?.guest_post || 0),
-      link_insertion: Number(statsRow?.link_insertion || 0),
-      featured_domain: Number(statsRow?.featured_domain || 0)
+      all: allRes.count || 0,
+      paid: paidRes.count || 0,
+      overdue: overdueRes.count || 0,
+      accepted: acceptedRes.count || 0,
+      submitted: submittedRes.count || 0,
+      completed: completedRes.count || 0,
+      refunded: refundedRes.count || 0,
+      guest_post: guestPostRes.count || 0,
+      link_insertion: linkInsertionRes.count || 0,
+      featured_domain: featuredDomainRes.count || 0,
     };
 
     return NextResponse.json({ success: true, stats });

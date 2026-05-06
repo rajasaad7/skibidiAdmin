@@ -73,7 +73,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [serviceTypeFilters, setServiceTypeFilters] = useState<string[]>(['guest_post', 'link_insertion', 'featured_domain']);
-  const [stats, setStats] = useState({ all: 0, paid: 0, in_progress: 0, submitted: 0, completed: 0, cancelled: 0, refunded: 0 });
+  const [stats, setStats] = useState({ all: 0, paid: 0, overdue: 0, accepted: 0, submitted: 0, completed: 0, refunded: 0 });
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -131,6 +131,9 @@ export default function OrdersPage() {
 
   // Refresh loading
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Modal data loading (when opening a row's details)
+  const [modalLoading, setModalLoading] = useState(false);
 
   const fetchStats = async () => {
     try {
@@ -215,10 +218,10 @@ export default function OrdersPage() {
   const getStatusCount = (status: string) => {
     if (status === 'all') return stats.all;
     if (status === 'paid') return stats.paid;
-    if (status === 'in_progress') return stats.in_progress;
+    if (status === 'overdue') return stats.overdue;
+    if (status === 'accepted') return stats.accepted;
     if (status === 'submitted') return stats.submitted;
     if (status === 'completed') return stats.completed;
-    if (status === 'cancelled') return stats.cancelled;
     if (status === 'refunded') return stats.refunded;
     return 0;
   };
@@ -232,6 +235,61 @@ export default function OrdersPage() {
     }
 
     return filteredOrders;
+  };
+
+  const populateOrderForm = (order: Order) => {
+    setEditingOrder(order);
+    setServiceType(order.serviceType);
+    setBuyerId(order.buyerId);
+    setPublisherId(order.publisherId);
+    setDomainId(order.domainId);
+    setNewStatus(order.status);
+    setBasePrice(order.basePrice?.toString() || '');
+    setPlatformFee(order.platformFee?.toString() || '');
+    setTotalPrice(order.totalPrice?.toString() || '');
+    setPublisherEarnings(order.publisherEarnings?.toString() || '');
+    setContentWritingFee(order.contentWritingFee?.toString() || '');
+    setRequestContentWriting(order.requestContentWriting || false);
+    setPaymentMethod(order.paymentMethod || 'paddle');
+    setPaymentStatus(order.paymentStatus || 'pending');
+    setPaddleTransactionId(order.paddleTransactionId || '');
+    setStripeTransactionId(order.stripeTransactionId || '');
+    setStripeSessionId(order.stripeSessionId || '');
+    setArticleTitle(order.articleTitle || '');
+    setArticleContent(order.articleContent || '');
+    setSpecialRequirements(order.specialRequirements || '');
+    setTargetUrl(order.targetUrl || '');
+    setAnchorText(order.anchorText || '');
+    setGoogleDocsLink(order.googleDocsLink || '');
+    setPublishedUrl(order.publishedUrl || '');
+    setCompletionNotes(order.completionNotes || '');
+    setAdminRemarks('');
+    setRefundAmount('');
+    setIsEditMode(false);
+    setDomainName('');
+    setBuyerName('');
+    setPublisherName('');
+  };
+
+  const openOrderModal = async (order: Order) => {
+    // Show modal immediately with the lightweight row data so the user gets feedback,
+    // then fetch full details in the background.
+    setEditingOrder(order);
+    setModalLoading(true);
+    try {
+      const response = await fetch(`/api/orders/${order._id}`);
+      const data = await response.json();
+      if (data.success && data.order) {
+        populateOrderForm(data.order);
+      } else {
+        toast.error('Failed to load order details');
+      }
+    } catch (error) {
+      console.error('Error loading order details:', error);
+      toast.error('Failed to load order details');
+    } finally {
+      setModalLoading(false);
+    }
   };
 
   const handleUpdateStatus = async () => {
@@ -525,7 +583,7 @@ export default function OrdersPage() {
       </div>
 
       <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-        {['all', 'paid', 'in_progress', 'submitted', 'completed', 'cancelled', 'refunded'].map((status) => (
+        {['all', 'paid', 'overdue', 'accepted', 'submitted', 'completed', 'refunded'].map((status) => (
           <button
             key={`filter-${status}`}
             onClick={() => setFilter(status)}
@@ -607,47 +665,7 @@ export default function OrdersPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => {
-                            setEditingOrder(order);
-                            // Core fields
-                            setServiceType(order.serviceType);
-                            setBuyerId(order.buyerId);
-                            setPublisherId(order.publisherId);
-                            setDomainId(order.domainId);
-                            setNewStatus(order.status);
-                            // Price fields
-                            setBasePrice(order.basePrice.toString());
-                            setPlatformFee(order.platformFee.toString());
-                            setTotalPrice(order.totalPrice.toString());
-                            setPublisherEarnings(order.publisherEarnings.toString());
-                            setContentWritingFee(order.contentWritingFee?.toString() || '');
-                            setRequestContentWriting(order.requestContentWriting || false);
-                            // Payment fields
-                            setPaymentMethod(order.paymentMethod || 'paddle');
-                            setPaymentStatus(order.paymentStatus || 'pending');
-                            setPaddleTransactionId(order.paddleTransactionId || '');
-                            setStripeTransactionId(order.stripeTransactionId || '');
-                            setStripeSessionId(order.stripeSessionId || '');
-                            // Buyer content
-                            setArticleTitle(order.articleTitle || '');
-                            setArticleContent(order.articleContent || '');
-                            setSpecialRequirements(order.specialRequirements || '');
-                            setTargetUrl(order.targetUrl || '');
-                            setAnchorText(order.anchorText || '');
-                            setGoogleDocsLink(order.googleDocsLink || '');
-                            // Seller fields
-                            setPublishedUrl(order.publishedUrl || '');
-                            setCompletionNotes(order.completionNotes || '');
-                            // Admin
-                            setAdminRemarks('');
-                            setRefundAmount('');
-                            // Edit mode
-                            setIsEditMode(false);
-                            // Clear fetched names - we'll use the order object data instead
-                            setDomainName('');
-                            setBuyerName('');
-                            setPublisherName('');
-                          }}
+                          onClick={() => openOrderModal(order)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
                           title="Manage Order"
                         >
@@ -736,45 +754,16 @@ export default function OrdersPage() {
                   <>
                     <button
                       onClick={async () => {
+                        if (!editingOrder) return;
                         setIsRefreshing(true);
                         try {
-                          // Refresh order data from database
-                          const response = await fetch('/api/orders');
+                          const response = await fetch(`/api/orders/${editingOrder._id}`);
                           const data = await response.json();
-                          if (data.success) {
-                            const refreshedOrder = data.orders.find((o: Order) => o._id === editingOrder._id);
-                            if (refreshedOrder) {
-                              setEditingOrder(refreshedOrder);
-                              // Update all form fields with fresh data
-                              setServiceType(refreshedOrder.serviceType);
-                              setBuyerId(refreshedOrder.buyerId);
-                              setPublisherId(refreshedOrder.publisherId);
-                              setDomainId(refreshedOrder.domainId);
-                              setNewStatus(refreshedOrder.status);
-                              setBasePrice(refreshedOrder.basePrice.toString());
-                              setPlatformFee(refreshedOrder.platformFee.toString());
-                              setTotalPrice(refreshedOrder.totalPrice.toString());
-                              setPublisherEarnings(refreshedOrder.publisherEarnings.toString());
-                              setContentWritingFee(refreshedOrder.contentWritingFee?.toString() || '');
-                              setRequestContentWriting(refreshedOrder.requestContentWriting || false);
-                              setPaymentMethod(refreshedOrder.paymentMethod || 'paddle');
-                              setPaymentStatus(refreshedOrder.paymentStatus || 'pending');
-                              setPaddleTransactionId(refreshedOrder.paddleTransactionId || '');
-                              setStripeTransactionId(refreshedOrder.stripeTransactionId || '');
-                              setStripeSessionId(refreshedOrder.stripeSessionId || '');
-                              setArticleTitle(refreshedOrder.articleTitle || '');
-                              setArticleContent(refreshedOrder.articleContent || '');
-                              setSpecialRequirements(refreshedOrder.specialRequirements || '');
-                              setTargetUrl(refreshedOrder.targetUrl || '');
-                              setAnchorText(refreshedOrder.anchorText || '');
-                              setGoogleDocsLink(refreshedOrder.googleDocsLink || '');
-                              setPublishedUrl(refreshedOrder.publishedUrl || '');
-                              setCompletionNotes(refreshedOrder.completionNotes || '');
-                              setDomainName('');
-                              setBuyerName('');
-                              setPublisherName('');
-                              toast.success('Order data refreshed!');
-                            }
+                          if (data.success && data.order) {
+                            populateOrderForm(data.order);
+                            toast.success('Order data refreshed!');
+                          } else {
+                            toast.error('Failed to refresh order data');
                           }
                         } catch (error) {
                           toast.error('Failed to refresh order data');
@@ -814,6 +803,13 @@ export default function OrdersPage() {
               </div>
             </div>
 
+            {modalLoading ? (
+              <div className="p-12 flex flex-col items-center justify-center text-gray-500">
+                <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mb-3" />
+                <p className="text-sm">Loading order details...</p>
+              </div>
+            ) : (
+            <>
             <div className="p-6 space-y-6">
               {/* Core Order Details */}
               <div className="border border-gray-200 rounded-lg p-4 space-y-3">
@@ -1461,6 +1457,8 @@ export default function OrdersPage() {
                   {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
+            )}
+            </>
             )}
           </div>
         </div>

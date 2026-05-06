@@ -38,7 +38,7 @@ interface MarketplaceStats {
   domains: { total: number; pending: number; verified: number; rejected: number };
   totalOrders: number;
   totalUsers: number;
-  revenue: { total: number; platform: number };
+  marketplaceFee: { thisMonth: number; lastMonth: number };
   ordersByStatus: { pending: number; active: number; completed: number; cancelled: number };
   topPublishers: Array<{ id: string; name: string; email: string; earnings: number }>;
   categoryDistribution: Array<[string, number]>;
@@ -108,12 +108,12 @@ export default function DashboardContent({
       ]
     },
     {
-      title: 'Total Revenue',
-      value: `$${marketplaceStats.revenue.total.toLocaleString()}`,
+      title: 'Marketplace Fee (This Month)',
+      value: `$${marketplaceStats.marketplaceFee.thisMonth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       icon: DollarSign,
       color: 'bg-green-500',
       breakdown: [
-        { label: 'Platform Fee', value: `$${marketplaceStats.revenue.platform.toLocaleString()}` }
+        { label: 'Last Month', value: `$${marketplaceStats.marketplaceFee.lastMonth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }
       ]
     },
     {
@@ -532,9 +532,9 @@ export default function DashboardContent({
             <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
               <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
-                Top Domain Categories
+                Domain Categories
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
                 {marketplaceStats.categoryDistribution.length > 0 ? (
                   marketplaceStats.categoryDistribution.map(([category, count]: any, index) => (
                     <div key={category} className="flex items-center justify-between">

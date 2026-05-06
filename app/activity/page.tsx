@@ -4,18 +4,18 @@ import React, { useEffect, useState } from 'react';
 import { Users, Globe, ShoppingCart, Link as LinkIcon, Target, Activity, TrendingUp, CheckCircle, Package, RefreshCw, Zap, DollarSign, FolderOpen, Copy, ExternalLink, Info } from 'lucide-react';
 
 interface ActivityData {
-  newUsers: { count: number; data: any[] };
-  newDomains: { count: number; data: any[] };
-  newOrders: { count: number; data: any[] };
-  activeUsers: { count: number; data: any[] };
-  newLinks: { count: number; data: any[] };
-  newKeywords: { count: number; data: any[] };
-  newProjects: { count: number; data: any[] };
-  completedOrders: { count: number; data: any[] };
-  newMarketplaceOrders: { count: number; data: any[] };
-  indexerLinksSubmitted: { count: number; data: any[] };
-  indexerCreditsPurchased: { count: number; data: any[] };
-  indexerCampaignsCreated: { count: number; data: any[] };
+  newUsers: { count: number };
+  newDomains: { count: number };
+  newOrders: { count: number };
+  activeUsers: { count: number };
+  newLinks: { count: number };
+  newKeywords: { count: number };
+  newProjects: { count: number };
+  completedOrders: { count: number };
+  newMarketplaceOrders: { count: number };
+  indexerLinksSubmitted: { count: number };
+  indexerCreditsPurchased: { count: number };
+  indexerCampaignsCreated: { count: number };
   totals: {
     users: number;
     domains: number;
@@ -32,6 +32,8 @@ export default function TodayActivityPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [sectionData, setSectionData] = useState<Record<string, any[]>>({});
+  const [sectionLoading, setSectionLoading] = useState<string | null>(null);
 
   const copyToClipboard = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -54,8 +56,39 @@ export default function TodayActivityPage() {
     }
   };
 
+  const fetchSection = async (sectionId: string, force = false) => {
+    if (!force && sectionData[sectionId]) return;
+    setSectionLoading(sectionId);
+    try {
+      const response = await fetch(`/api/activity/today/${sectionId}`);
+      const data = await response.json();
+      if (data.success) {
+        setSectionData((prev) => ({ ...prev, [sectionId]: data.data || [] }));
+      }
+    } catch (error) {
+      console.error(`Error fetching section ${sectionId}:`, error);
+    } finally {
+      setSectionLoading(null);
+    }
+  };
+
+  const handleCardClick = (cardId: string, count: number) => {
+    if (activeSection === cardId) {
+      setActiveSection(null);
+      return;
+    }
+    setActiveSection(cardId);
+    if (count > 0) {
+      fetchSection(cardId);
+    }
+  };
+
   const handleRefresh = () => {
     setRefreshing(true);
+    setSectionData({});
+    if (activeSection) {
+      fetchSection(activeSection, true);
+    }
     fetchActivity();
   };
 
@@ -89,7 +122,6 @@ export default function TodayActivityPage() {
       count: activity.newUsers.count,
       icon: Users,
       color: 'blue',
-      data: activity.newUsers.data,
       total: activity.totals.users,
     },
     {
@@ -98,7 +130,6 @@ export default function TodayActivityPage() {
       count: activity.activeUsers.count,
       icon: Activity,
       color: 'green',
-      data: activity.activeUsers.data,
     },
     {
       id: 'newLinks',
@@ -106,7 +137,6 @@ export default function TodayActivityPage() {
       count: activity.newLinks.count,
       icon: LinkIcon,
       color: 'purple',
-      data: activity.newLinks.data,
       total: activity.totals.links,
     },
     {
@@ -115,7 +145,6 @@ export default function TodayActivityPage() {
       count: activity.newKeywords.count,
       icon: Target,
       color: 'pink',
-      data: activity.newKeywords.data,
       total: activity.totals.keywords,
     },
     {
@@ -124,7 +153,6 @@ export default function TodayActivityPage() {
       count: activity.newDomains.count,
       icon: Globe,
       color: 'indigo',
-      data: activity.newDomains.data,
       total: activity.totals.domains,
     },
     {
@@ -133,7 +161,6 @@ export default function TodayActivityPage() {
       count: activity.newOrders.count,
       icon: ShoppingCart,
       color: 'orange',
-      data: activity.newOrders.data,
     },
     {
       id: 'completedOrders',
@@ -141,7 +168,6 @@ export default function TodayActivityPage() {
       count: activity.completedOrders.count,
       icon: CheckCircle,
       color: 'teal',
-      data: activity.completedOrders.data,
     },
     {
       id: 'newMarketplaceOrders',
@@ -149,7 +175,6 @@ export default function TodayActivityPage() {
       count: activity.newMarketplaceOrders.count,
       icon: Package,
       color: 'cyan',
-      data: activity.newMarketplaceOrders.data,
     },
     {
       id: 'newProjects',
@@ -157,7 +182,6 @@ export default function TodayActivityPage() {
       count: activity.newProjects.count,
       icon: TrendingUp,
       color: 'amber',
-      data: activity.newProjects.data,
     },
     {
       id: 'indexerLinksSubmitted',
@@ -165,7 +189,6 @@ export default function TodayActivityPage() {
       count: activity.indexerLinksSubmitted.count,
       icon: Zap,
       color: 'violet',
-      data: activity.indexerLinksSubmitted.data,
       total: activity.totals.indexerLinks,
     },
     {
@@ -174,7 +197,6 @@ export default function TodayActivityPage() {
       count: activity.indexerCreditsPurchased.count,
       icon: DollarSign,
       color: 'emerald',
-      data: activity.indexerCreditsPurchased.data,
     },
     {
       id: 'indexerCampaignsCreated',
@@ -182,10 +204,12 @@ export default function TodayActivityPage() {
       count: activity.indexerCampaignsCreated.count,
       icon: FolderOpen,
       color: 'sky',
-      data: activity.indexerCampaignsCreated.data,
       total: activity.totals.indexerCampaigns,
     },
   ];
+
+  const currentSectionData: any[] = activeSection ? sectionData[activeSection] || [] : [];
+  const isSectionLoading = sectionLoading === activeSection;
 
   const colorClasses: Record<string, { bg: string; text: string; border: string }> = {
     blue: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
@@ -234,7 +258,7 @@ export default function TodayActivityPage() {
             <div
               key={card.id}
               className={`${colors.bg} border ${colors.border} rounded-lg p-4 cursor-pointer hover:shadow-lg transition-all duration-200`}
-              onClick={() => setActiveSection(activeSection === card.id ? null : card.id)}
+              onClick={() => handleCardClick(card.id, card.count)}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className={`w-10 h-10 ${colors.bg} rounded-lg flex items-center justify-center border ${colors.border}`}>
@@ -272,7 +296,12 @@ export default function TodayActivityPage() {
           </div>
 
           <div className="overflow-x-auto overflow-y-visible">
-            {activeSection === 'newUsers' && activity.newUsers.data.length > 0 && (
+            {isSectionLoading && (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+              </div>
+            )}
+            {!isSectionLoading && activeSection === 'newUsers' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -282,7 +311,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.newUsers.data.map((user) => (
+                  {currentSectionData.map((user) => (
                     <tr key={user._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
                         <div className="flex items-center gap-2">
@@ -362,7 +391,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'activeUsers' && activity.activeUsers.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'activeUsers' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -372,7 +401,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.activeUsers.data.map((user) => (
+                  {currentSectionData.map((user) => (
                     <tr key={user._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{user.fullName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
@@ -383,7 +412,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'newLinks' && activity.newLinks.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'newLinks' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -396,7 +425,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.newLinks.data.map((link) => (
+                  {currentSectionData.map((link) => (
                     <tr key={link._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm">
                         <span className="text-blue-600" title={link.url}>
@@ -424,7 +453,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'newKeywords' && activity.newKeywords.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'newKeywords' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -434,7 +463,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.newKeywords.data.map((keyword) => (
+                  {currentSectionData.map((keyword) => (
                     <tr key={keyword._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{keyword.keyword}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{keyword.users?.fullName || 'N/A'}</td>
@@ -445,7 +474,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'newDomains' && activity.newDomains.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'newDomains' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -456,7 +485,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.newDomains.data.map((domain) => (
+                  {currentSectionData.map((domain) => (
                     <tr key={domain._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{domain.domainName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{domain.users?.fullName || 'N/A'}</td>
@@ -476,7 +505,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'newOrders' && activity.newOrders.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'newOrders' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -488,7 +517,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.newOrders.data.map((order) => (
+                  {currentSectionData.map((order) => (
                     <tr key={order._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{order.planName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{order.users?.fullName || 'N/A'}</td>
@@ -509,7 +538,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'completedOrders' && activity.completedOrders.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'completedOrders' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -519,7 +548,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.completedOrders.data.map((order) => (
+                  {currentSectionData.map((order) => (
                     <tr key={order._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{order.planName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{order.users?.fullName || 'N/A'}</td>
@@ -530,7 +559,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'newMarketplaceOrders' && activity.newMarketplaceOrders.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'newMarketplaceOrders' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -541,7 +570,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.newMarketplaceOrders.data.map((order) => (
+                  {currentSectionData.map((order) => (
                     <tr key={order._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{order.domains?.domainName || 'N/A'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">USD {order.totalPrice}</td>
@@ -563,7 +592,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'newProjects' && activity.newProjects.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'newProjects' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -574,7 +603,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.newProjects.data.map((project) => (
+                  {currentSectionData.map((project) => (
                     <tr key={project._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{project.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{project.website || 'N/A'}</td>
@@ -586,7 +615,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'indexerLinksSubmitted' && activity.indexerLinksSubmitted.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'indexerLinksSubmitted' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -599,7 +628,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.indexerLinksSubmitted.data.map((link) => (
+                  {currentSectionData.map((link) => (
                     <tr key={link._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm">
                         <span className="text-blue-600" title={link.url}>
@@ -647,7 +676,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'indexerCreditsPurchased' && activity.indexerCreditsPurchased.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'indexerCreditsPurchased' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -657,7 +686,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.indexerCreditsPurchased.data.map((transaction) => (
+                  {currentSectionData.map((transaction) => (
                     <tr key={transaction._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
                         {transaction.organizations?.name || 'N/A'}
@@ -672,7 +701,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activeSection === 'indexerCampaignsCreated' && activity.indexerCampaignsCreated.data.length > 0 && (
+            {!isSectionLoading && activeSection === 'indexerCampaignsCreated' && currentSectionData.length > 0 && (
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
@@ -682,7 +711,7 @@ export default function TodayActivityPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {activity.indexerCampaignsCreated.data.map((campaign) => (
+                  {currentSectionData.map((campaign) => (
                     <tr key={campaign._id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{campaign.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
@@ -698,7 +727,7 @@ export default function TodayActivityPage() {
               </table>
             )}
 
-            {activityCards.find(c => c.id === activeSection)?.data.length === 0 && (
+            {!isSectionLoading && currentSectionData.length === 0 && (
               <p className="text-center text-gray-500 py-8">No data available</p>
             )}
           </div>

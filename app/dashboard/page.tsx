@@ -3,14 +3,43 @@ import DashboardContent from '@/components/DashboardContent';
 
 export const dynamic = 'force-dynamic';
 
+// Tiered marketplace fee per completed order.
+// - Featured Domain orders: full totalPrice goes to the marketplace.
+// - basePrice < 20: $2.50 buyer flat + 2.5% seller of basePrice
+// - basePrice 20–100: $5 flat ($2.50 each side)
+// - basePrice > 100: 5% of basePrice (2.5% each side)
+function calcMarketplaceFee(order: { basePrice: number | null; totalPrice: number | null; serviceType: string | null }) {
+  if (order.serviceType === 'featured_domain') {
+    return Number(order.totalPrice || 0);
+  }
+  const base = Number(order.basePrice || 0);
+  if (base <= 0) return 0;
+  if (base < 20) return 2.5 + 0.025 * base;
+  if (base <= 100) return 5;
+  return 0.05 * base;
+}
+
 async function getMarketplaceStats() {
   try {
+    const orderCount = (build: (q: any) => any) =>
+      build(supabase.from('marketplace_orders').select('_id', { count: 'exact', head: true }));
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const monthStartIso = monthStart.toISOString();
+    const lastMonthStartIso = lastMonthStart.toISOString();
+
     const [
       domainStatsRes,
       ordersRes,
       usersRes,
-      revenueRes,
-      recentOrdersRes,
+      thisMonthOrdersRes,
+      lastMonthOrdersRes,
+      pendingOrdersRes,
+      activeOrdersRes,
+      completedOrdersRes,
+      cancelledOrdersRes,
       topPublishersRes,
       categoryStatsRes
     ] = await Promise.all([
@@ -23,16 +52,24 @@ async function getMarketplaceStats() {
       // Total users
       supabase.from('users').select('_id', { count: 'exact', head: true }),
 
-      // Total revenue (sum of all completed orders)
+      // Completed orders this month (by completedAt; NOT NULL guaranteed for completed orders)
       supabase.from('marketplace_orders')
-        .select('totalPrice, platformFee')
-        .eq('status', 'completed'),
+        .select('basePrice, totalPrice, serviceType, completedAt')
+        .eq('status', 'completed')
+        .gte('completedAt', monthStartIso),
 
-      // Recent orders for activity
+      // Completed orders last month (>= last month start, < this month start)
       supabase.from('marketplace_orders')
-        .select('status')
-        .order('createdAt', { ascending: false })
-        .limit(100),
+        .select('basePrice, totalPrice, serviceType, completedAt')
+        .eq('status', 'completed')
+        .gte('completedAt', lastMonthStartIso)
+        .lt('completedAt', monthStartIso),
+
+      // Order status counts across the full table
+      orderCount((q) => q.in('status', ['pending_payment', 'payment_processing'])),
+      orderCount((q) => q.in('status', ['paid', 'in_progress', 'accepted', 'submitted'])),
+      orderCount((q) => q.eq('status', 'completed')),
+      orderCount((q) => q.in('status', ['cancelled', 'refunded'])),
 
       // Top publishers by earnings
       supabase.from('marketplace_orders')
@@ -41,26 +78,35 @@ async function getMarketplaceStats() {
         .order('createdAt', { ascending: false })
         .limit(1000),
 
-      // Domain categories distribution
+      // Domain categories distribution (all verified domains)
       supabase.from('domains')
         .select('categoryId, domain_categories(name)')
         .eq('verificationStatus', 'verified')
-        .limit(1000)
+        .limit(10000)
     ]);
 
-    const domainStats = domainStatsRes.data || { total: 0, pending: 0, verified: 0, rejected: 0 };
+    // RPC returns an array of rows; unwrap the first row.
+    const domainStatsRow = Array.isArray(domainStatsRes.data)
+      ? domainStatsRes.data[0]
+      : domainStatsRes.data;
+    const domainStats = {
+      total: Number(domainStatsRow?.total || 0),
+      pending: Number(domainStatsRow?.pending || 0),
+      verified: Number(domainStatsRow?.verified || 0),
+      rejected: Number(domainStatsRow?.rejected || 0),
+    };
 
-    // Calculate revenue
-    const totalRevenue = (revenueRes.data || []).reduce((sum, order) => sum + Number(order.totalPrice || 0), 0);
-    const platformRevenue = (revenueRes.data || []).reduce((sum, order) => sum + Number(order.platformFee || 0), 0);
+    const sumMarketplaceFee = (rows: any[] | null) =>
+      (rows || []).reduce((sum, o) => sum + calcMarketplaceFee(o), 0);
 
-    // Order status breakdown
-    const orders = recentOrdersRes.data || [];
+    const marketplaceFeeThisMonth = sumMarketplaceFee(thisMonthOrdersRes.data);
+    const marketplaceFeeLastMonth = sumMarketplaceFee(lastMonthOrdersRes.data);
+
     const ordersByStatus = {
-      pending: orders.filter(o => o.status === 'pending_payment' || o.status === 'payment_processing').length,
-      active: orders.filter(o => o.status === 'paid' || o.status === 'in_progress').length,
-      completed: orders.filter(o => o.status === 'completed').length,
-      cancelled: orders.filter(o => o.status === 'cancelled' || o.status === 'refunded').length,
+      pending: pendingOrdersRes.count || 0,
+      active: activeOrdersRes.count || 0,
+      completed: completedOrdersRes.count || 0,
+      cancelled: cancelledOrdersRes.count || 0,
     };
 
     // Top publishers
@@ -96,9 +142,9 @@ async function getMarketplaceStats() {
       domains: domainStats,
       totalOrders: ordersRes.count || 0,
       totalUsers: usersRes.count || 0,
-      revenue: {
-        total: totalRevenue,
-        platform: platformRevenue,
+      marketplaceFee: {
+        thisMonth: marketplaceFeeThisMonth,
+        lastMonth: marketplaceFeeLastMonth,
       },
       ordersByStatus,
       topPublishers: Object.entries(publisherEarnings)
@@ -112,7 +158,6 @@ async function getMarketplaceStats() {
         })),
       categoryDistribution: Object.entries(categoryCount)
         .sort((a: any, b: any) => b[1] - a[1])
-        .slice(0, 5)
         .map(([name, count]) => [name, Number(count)] as [string, number]),
     };
   } catch (error) {
@@ -121,7 +166,7 @@ async function getMarketplaceStats() {
       domains: { total: 0, pending: 0, verified: 0, rejected: 0 },
       totalOrders: 0,
       totalUsers: 0,
-      revenue: { total: 0, platform: 0 },
+      marketplaceFee: { thisMonth: 0, lastMonth: 0 },
       ordersByStatus: { pending: 0, active: 0, completed: 0, cancelled: 0 },
       topPublishers: [],
       categoryDistribution: [],
