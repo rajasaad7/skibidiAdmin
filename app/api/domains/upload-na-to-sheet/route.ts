@@ -16,21 +16,28 @@ export async function POST() {
     const spreadsheetId = process.env.GOOGLE_SHEET_ID || '1ActmOwcI92VRa-LH4KGu4FehzSPcApTuPNp_9k7bdXk';
     const sheetName = process.env.GOOGLE_SHEET_NAME || '1';
 
-    // Fetch all N/A domains
-    const { data: allDomains, error } = await supabase
-      .from('domains')
-      .select('_id, "domainName", "domainRating", "domainAuthority", "spamScore", "organicTraffic"')
-      .order('"domainName"', { ascending: true });
+    // Fetch N/A domains (all four metrics = 0) in pages to bypass the 1000-row default limit
+    const PAGE_SIZE = 1000;
+    const naDomains: { _id: string; domainName: string }[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('domains')
+        .select('_id, "domainName"')
+        .eq('"organicTraffic"', 0)
+        .eq('"domainAuthority"', 0)
+        .eq('"domainRating"', 0)
+        .eq('"spamScore"', 0)
+        .order('"domainName"', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (error) throw error;
+      if (error) throw error;
+      if (!data || data.length === 0) break;
 
-    // Filter domains where traffic, DA, DR, and SS are all 0
-    const naDomains = (allDomains || []).filter(domain => {
-      return domain.organicTraffic === 0 &&
-             domain.domainAuthority === 0 &&
-             domain.domainRating === 0 &&
-             domain.spamScore === 0;
-    });
+      naDomains.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
 
     if (naDomains.length === 0) {
       return NextResponse.json({

@@ -18,20 +18,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch N/A domains from database (domains where ALL 4 metrics are 0 or null)
-    const { data: allDomains, error: fetchError } = await supabase
-      .from('domains')
-      .select('_id, "domainName", url, "domainRating", "domainAuthority", "organicTraffic", "spamScore", country');
+    // Fetch N/A domains (all four metrics are 0 or null) in pages to bypass the 1000-row default limit
+    const PAGE_SIZE = 1000;
+    const naDomains: { _id: string; domainName: string; url: string; domainRating: number | null; domainAuthority: number | null; organicTraffic: number | null; spamScore: number | null; country: string | null }[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error: fetchError } = await supabase
+        .from('domains')
+        .select('_id, "domainName", url, "domainRating", "domainAuthority", "organicTraffic", "spamScore", country')
+        .or('"domainRating".is.null,"domainRating".eq.0')
+        .or('"domainAuthority".is.null,"domainAuthority".eq.0')
+        .or('"organicTraffic".is.null,"organicTraffic".eq.0')
+        .or('"spamScore".is.null,"spamScore".eq.0')
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (fetchError) throw fetchError;
+      if (fetchError) throw fetchError;
+      if (!data || data.length === 0) break;
 
-    // Filter domains where ALL 4 metrics are 0 or null (true N/A domains)
-    const naDomains = allDomains?.filter(d =>
-      (d.domainRating === null || d.domainRating === 0) &&
-      (d.domainAuthority === null || d.domainAuthority === 0) &&
-      (d.organicTraffic === null || d.organicTraffic === 0) &&
-      (d.spamScore === null || d.spamScore === 0)
-    ) || [];
+      naDomains.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
 
     console.log('Found N/A domains:', naDomains?.length || 0);
     console.log('Sheet data rows:', sheetData.length);

@@ -36,33 +36,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // For other filters, use regular query
-    let query = supabase
-      .from('domains')
-      .select('_id');
+    // For other filters, use regular query — paginated to bypass the 1000-row default limit
+    const PAGE_SIZE = 1000;
+    const domainIds: string[] = [];
+    let from = 0;
+    while (true) {
+      let query = supabase
+        .from('domains')
+        .select('_id');
 
-    // Apply search filter
-    if (search && search.trim()) {
-      query = query.ilike('domainName', `%${search.trim()}%`);
+      if (search && search.trim()) {
+        query = query.ilike('domainName', `%${search.trim()}%`);
+      }
+      if (uncategorized) {
+        query = query.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
+      }
+      if (updateRequests) {
+        query = query.eq('"updateStats"', true);
+      }
+
+      const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      domainIds.push(...data.map((d: any) => d._id));
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
     }
-
-    // Apply uncategorized filter
-    if (uncategorized) {
-      query = query.eq('categoryId', 'b396a018-9721-4aff-b554-5acd46b098d3');
-    }
-
-    // Apply update requests filter
-    if (updateRequests) {
-      query = query.eq('"updateStats"', true);
-    }
-
-    // Execute the query
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    // Extract just the IDs
-    const domainIds = data?.map((d: any) => d._id) || [];
 
     return NextResponse.json({
       success: true,

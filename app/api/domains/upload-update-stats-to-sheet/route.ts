@@ -16,16 +16,27 @@ export async function POST() {
     const spreadsheetId = process.env.GOOGLE_SHEET_ID || '1ActmOwcI92VRa-LH4KGu4FehzSPcApTuPNp_9k7bdXk';
     const sheetName = 'updateStats'; // Different sheet for update stats domains
 
-    // Fetch all domains with updateStats = true
-    const { data: updateStatsDomains, error } = await supabase
-      .from('domains')
-      .select('_id, "domainName", "domainRating", "domainAuthority", "spamScore", "organicTraffic", "updateStats"')
-      .eq('"updateStats"', true)
-      .order('"domainName"', { ascending: true });
+    // Fetch all domains with updateStats = true, paginated to bypass the 1000-row default limit
+    const PAGE_SIZE = 1000;
+    const updateStatsDomains: { _id: string; domainName: string }[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('domains')
+        .select('_id, "domainName"')
+        .eq('"updateStats"', true)
+        .order('"domainName"', { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (error) throw error;
+      if (error) throw error;
+      if (!data || data.length === 0) break;
 
-    if (!updateStatsDomains || updateStatsDomains.length === 0) {
+      updateStatsDomains.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+
+    if (updateStatsDomains.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'No domains with updateStats = true found'
