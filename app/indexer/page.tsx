@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, Search, ExternalLink, Zap, Users, X } from 'lucide-react';
+import { RefreshCw, Search, ExternalLink, Zap, Users, X, Pencil, Check } from 'lucide-react';
 import Link from 'next/link';
+import toast, { Toaster } from 'react-hot-toast';
 
 interface Campaign {
   _id: string;
@@ -42,6 +43,9 @@ export default function IndexerPage() {
     totalCampaigns: 0
   });
   const [speedyIndexBalance, setSpeedyIndexBalance] = useState<SpeedyIndexBalance | null>(null);
+  const [editingBalance, setEditingBalance] = useState(false);
+  const [balanceInput, setBalanceInput] = useState('');
+  const [savingBalance, setSavingBalance] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
@@ -75,6 +79,44 @@ export default function IndexerPage() {
     }
   };
 
+  const startEditingBalance = () => {
+    setBalanceInput(
+      speedyIndexBalance?.google_indexer !== undefined
+        ? String(speedyIndexBalance.google_indexer)
+        : ''
+    );
+    setEditingBalance(true);
+  };
+
+  const saveBalance = async () => {
+    const value = Number(balanceInput);
+    if (!Number.isFinite(value) || value < 0) {
+      toast.error('Please enter a valid non-negative number');
+      return;
+    }
+    setSavingBalance(true);
+    try {
+      const response = await fetch('/api/indexer/speedyindex-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ balance: value }),
+      });
+      const data = await response.json();
+      if (data.success && data.balance) {
+        setSpeedyIndexBalance(data.balance);
+        setEditingBalance(false);
+        toast.success('Sinbyte balance updated');
+      } else {
+        toast.error(data.error || 'Failed to update balance');
+      }
+    } catch (error) {
+      console.error('Error updating Sinbyte balance:', error);
+      toast.error('Failed to update balance');
+    } finally {
+      setSavingBalance(false);
+    }
+  };
+
   useEffect(() => {
     fetchOrganizations();
     fetchSpeedyIndexBalance();
@@ -99,6 +141,7 @@ export default function IndexerPage() {
 
   return (
     <div>
+      <Toaster position="top-right" />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
         <h1 className="text-lg md:text-3xl font-bold text-gray-900">Indexer Management</h1>
         <div className="flex items-center gap-3">
@@ -129,7 +172,7 @@ export default function IndexerPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
           <div className="text-sm text-gray-600 mb-1">Organizations</div>
           <div className="text-2xl font-bold text-blue-600">{stats.totalOrganizations}</div>
@@ -139,27 +182,64 @@ export default function IndexerPage() {
           <div className="text-2xl font-bold text-purple-600">{stats.totalCampaigns}</div>
         </div>
         <div className="bg-white rounded-lg shadow-sm p-4 border border-blue-200">
-          <div className="text-sm text-gray-600 mb-1">SpeedyIndex API</div>
-          <div className="text-2xl font-bold text-blue-700">
-            {speedyIndexBalance?.google_indexer ?? '-'}
+          <div className="flex items-center justify-between mb-1">
+            <div className="text-sm text-gray-600">Sinbyte API</div>
+            {!editingBalance && (
+              <button
+                onClick={startEditingBalance}
+                className="text-gray-400 hover:text-blue-600 transition"
+                title="Update Sinbyte balance"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
+          {editingBalance ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="0"
+                autoFocus
+                value={balanceInput}
+                onChange={(e) => setBalanceInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveBalance();
+                  if (e.key === 'Escape') setEditingBalance(false);
+                }}
+                className="w-full min-w-0 px-2 py-1 text-lg font-bold border border-blue-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <button
+                onClick={saveBalance}
+                disabled={savingBalance}
+                className="p-1.5 bg-green-600 text-white rounded hover:bg-green-700 transition disabled:opacity-50 shrink-0"
+                title="Save"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setEditingBalance(false)}
+                disabled={savingBalance}
+                className="p-1.5 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition disabled:opacity-50 shrink-0"
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className={`text-2xl font-bold ${
+              speedyIndexBalance?.google_indexer !== undefined && speedyIndexBalance.google_indexer < 0
+                ? 'text-red-600'
+                : 'text-blue-700'
+            }`}>
+              {speedyIndexBalance?.google_indexer !== undefined
+                ? speedyIndexBalance.google_indexer.toLocaleString()
+                : '-'}
+            </div>
+          )}
         </div>
         <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
           <div className="text-sm text-gray-600 mb-1">Client Credits</div>
           <div className="text-2xl font-bold text-green-600">{stats.totalCredits}</div>
-        </div>
-        <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Balance</div>
-          <div className={`text-2xl font-bold ${
-            speedyIndexBalance?.google_indexer !== undefined && speedyIndexBalance.google_indexer - stats.totalCredits >= 0
-              ? 'text-green-600'
-              : 'text-red-600'
-          }`}>
-            {speedyIndexBalance?.google_indexer !== undefined
-              ? (speedyIndexBalance.google_indexer - stats.totalCredits).toLocaleString()
-              : '-'
-            }
-          </div>
         </div>
       </div>
 

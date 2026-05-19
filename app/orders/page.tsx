@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw, Edit2, X, Trash2 } from 'lucide-react';
+import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface Order {
@@ -61,11 +61,19 @@ interface Order {
   buyer?: {
     fullName: string;
     email: string;
+    contactDetails?: ContactDetails | null;
   };
   seller?: {
     fullName: string;
     email: string;
+    contactDetails?: ContactDetails | null;
   };
+}
+
+interface ContactDetails {
+  type: string;
+  value: string;
+  updatedAt: string;
 }
 
 export default function OrdersPage() {
@@ -77,6 +85,7 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [contactModal, setContactModal] = useState<{ name: string; contactDetails: ContactDetails } | null>(null);
 
   // Core order fields
   const [serviceType, setServiceType] = useState<string>('');
@@ -901,8 +910,23 @@ export default function OrdersPage() {
                       Publisher
                     </label>
                     {!isEditMode ? (
-                      <div className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50">
-                        {editingOrder.seller ? `${editingOrder.seller.fullName} (${editingOrder.seller.email})` : publisherName || 'N/A'}
+                      <div className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          {editingOrder.seller ? `${editingOrder.seller.fullName} (${editingOrder.seller.email})` : publisherName || 'N/A'}
+                        </span>
+                        {editingOrder.seller?.contactDetails && (
+                          <button
+                            type="button"
+                            onClick={() => setContactModal({
+                              name: editingOrder.seller!.fullName,
+                              contactDetails: editingOrder.seller!.contactDetails!,
+                            })}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition shrink-0"
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            Contact
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <>
@@ -1509,6 +1533,101 @@ export default function OrdersPage() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contact Details Modal */}
+      {contactModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4 rounded-t-xl flex items-center justify-between">
+              <div className="flex items-center gap-2 text-white">
+                <MessageCircle className="w-5 h-5" />
+                <h3 className="text-lg font-semibold">Contact Details</h3>
+              </div>
+              <button
+                onClick={() => setContactModal(null)}
+                className="text-white hover:text-gray-200 transition"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="mb-3">
+                  <div className="text-sm text-gray-600 mb-1">Publisher</div>
+                  <div className="text-base font-semibold text-gray-900">{contactModal.name}</div>
+                </div>
+
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="text-sm text-gray-600 mb-1">Contact Type</div>
+                    <div className="flex items-center gap-2">
+                      {contactModal.contactDetails.type === 'whatsapp' ? (
+                        <>
+                          <MessageCircle className="w-5 h-5 text-green-600" />
+                          <span className="text-lg font-semibold text-gray-900">WhatsApp</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-5 h-5 text-blue-600" />
+                          <span className="text-lg font-semibold text-gray-900">Telegram</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <div className="text-sm text-gray-600 mb-1">Contact Value</div>
+                  <div className="text-lg font-mono font-semibold text-gray-900 bg-white px-3 py-2 rounded border border-gray-300">
+                    {contactModal.contactDetails.value}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm text-gray-600 mb-1">Updated</div>
+                  <div className="text-sm text-gray-700">
+                    {new Date(contactModal.contactDetails.updatedAt).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                {contactModal.contactDetails.type === 'whatsapp' ? (
+                  <a
+                    href={`https://wa.me/${contactModal.contactDetails.value.replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-semibold"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Send WhatsApp Message
+                  </a>
+                ) : (
+                  <a
+                    href={`https://t.me/${contactModal.contactDetails.value.replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold"
+                  >
+                    <Send className="w-5 h-5" />
+                    Send Telegram Message
+                  </a>
+                )}
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(contactModal.contactDetails.value);
+                    toast.success('Copied to clipboard!');
+                  }}
+                  className="px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold"
+                >
+                  Copy
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET() {
   try {
     // Fetch all counts in parallel for better performance
-    const [contactsResult, bugsResult, statsResult, payoutsResult, whiteLabelLeadsResult, moderationRequestsResult] = await Promise.all([
+    const [contactsResult, bugsResult, statsResult, payoutsResult, whiteLabelLeadsResult, moderationRequestsResult, sinbyteBalanceResult] = await Promise.all([
       // Get count of new contacts (status = 'new' or 'pending')
       supabase
         .from('contacts')
@@ -37,7 +37,14 @@ export async function GET() {
       supabase
         .from('moderation_requests')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending')
+        .eq('status', 'pending'),
+
+      // Get the manually-set / auto-decremented Sinbyte indexer balance
+      supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'sinbyte_indexer_balance')
+        .maybeSingle()
     ]);
 
     if (contactsResult.error) {
@@ -58,6 +65,14 @@ export async function GET() {
     if (moderationRequestsResult.error) {
       console.error('Moderation requests error:', moderationRequestsResult.error);
     }
+    if (sinbyteBalanceResult.error) {
+      console.error('Sinbyte balance error:', sinbyteBalanceResult.error);
+    }
+
+    const sinbyteBalanceRaw = sinbyteBalanceResult.data?.value;
+    const sinbyteBalance = sinbyteBalanceRaw ? parseFloat(sinbyteBalanceRaw) : null;
+    const lowSinbyteBalance =
+      sinbyteBalance !== null && Number.isFinite(sinbyteBalance) && sinbyteBalance < 500;
 
     // RPC returns an array with one row, so we need to get the first element
     const statsRow = statsResult.data && statsResult.data.length > 0 ? statsResult.data[0] : null;
@@ -73,6 +88,7 @@ export async function GET() {
         pendingPayouts: payoutsResult.count || 0,
         newWhiteLabelLeads: whiteLabelLeadsResult.count || 0,
         pendingModerationRequests: moderationRequestsResult.count || 0,
+        lowSinbyteBalance,
       }
     });
   } catch (error) {

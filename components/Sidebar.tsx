@@ -15,7 +15,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, updateRequests: 0, pendingPayouts: 0, newWhiteLabelLeads: 0, pendingModerationRequests: 0 });
+  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, updateRequests: 0, pendingPayouts: 0, newWhiteLabelLeads: 0, pendingModerationRequests: 0, lowSinbyteBalance: false });
 
   useEffect(() => {
     setIsNavigating(false);
@@ -173,6 +173,12 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
                     <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-orange-500 rounded-full">
                       {notifications.pendingPayouts}
                     </span>
+                  )}
+                  {item.href === '/indexer' && notifications.lowSinbyteBalance && (
+                    <span
+                      className="w-2.5 h-2.5 bg-red-500 rounded-full"
+                      title="Sinbyte balance is below 500"
+                    />
                   )}
                 </Link>
               </li>

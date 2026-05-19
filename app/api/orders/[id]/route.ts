@@ -42,7 +42,7 @@ export async function GET(
     if (userIds.length > 0) {
       const { data: usersData } = await supabase
         .from('users')
-        .select('_id, fullName, email')
+        .select('_id, fullName, email, contactDetails')
         .in('_id', userIds);
 
       const usersMap = new Map(
