@@ -11,7 +11,10 @@ export async function GET(request: NextRequest) {
       .select('*')
       .order('"createdAt"', { ascending: false });
 
-    if (status && status !== 'all') {
+    if (status === 'active') {
+      // "Needs Action" — everything still open (excludes completed and failed).
+      query = query.in('status', ['pending', 'processing']);
+    } else if (status && status !== 'all') {
       query = query.eq('status', status);
     }
 
@@ -19,17 +22,30 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Fetch user data for each payout and calculate amountReceived
+    // Fetch user data + linked payout method for each payout and calculate amountReceived
     const payoutsWithUsers = await Promise.all(
       (data || []).map(async (payout) => {
         let userData = null;
         if (payout.userId) {
           const { data: user } = await supabase
             .from('users')
-            .select('_id, email, fullName')
+            .select('_id, email, "fullName", "billingInfo", "contactDetails"')
             .eq('_id', payout.userId)
             .single();
           userData = user;
+        }
+
+        // Fetch the saved payout method the publisher selected for this request.
+        // Newer payouts reference publisher_payout_methods via payoutMethodId;
+        // older ones only carry the legacy paymentDetails JSONB blob.
+        let payoutMethod = null;
+        if (payout.payoutMethodId) {
+          const { data: method } = await supabase
+            .from('publisher_payout_methods')
+            .select('*')
+            .eq('_id', payout.payoutMethodId)
+            .single();
+          payoutMethod = method;
         }
 
         // Calculate amountReceived if not already set
@@ -40,6 +56,7 @@ export async function GET(request: NextRequest) {
         return {
           ...payout,
           user: userData,
+          payoutMethod,
           amountReceived: amountReceived.toFixed(2)
         };
       })
