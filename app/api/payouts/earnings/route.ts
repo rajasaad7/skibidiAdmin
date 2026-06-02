@@ -54,13 +54,32 @@ export async function GET() {
 
     if (completedError) throw completedError;
 
+    // Publishers with an open (pending/processing) payout request — used to flag
+    // who has already submitted a request vs. who is still sitting on a balance.
+    const { data: openRequests, error: openError } = await supabase
+      .from('publisher_payouts')
+      .select('"userId"')
+      .in('status', ['pending', 'processing']);
+
+    if (openError) throw openError;
+
+    const openRequestUserIds = new Set(
+      (openRequests || []).map((r: any) => r.userId).filter(Boolean)
+    );
+
     // Count pending and completed orders by publisher
     const pendingOrdersMap = new Map<string, number>();
     const completedOrdersMap = new Map<string, number>();
+    // Sum of publisherEarnings for accepted-but-not-completed orders.
+    const pendingEarningsMap = new Map<string, number>();
 
     (pendingOrders || []).forEach((order: any) => {
       if (!order.publisherId) return;
       pendingOrdersMap.set(order.publisherId, (pendingOrdersMap.get(order.publisherId) || 0) + 1);
+      pendingEarningsMap.set(
+        order.publisherId,
+        (pendingEarningsMap.get(order.publisherId) || 0) + Number(order.publisherEarnings || 0)
+      );
     });
 
     (completedOrders || []).forEach((order: any) => {
@@ -81,7 +100,9 @@ export async function GET() {
           pendingPayout: Number(balance.currentBalance || 0), // Available balance = pending payout
           paidOut: Number(balance.totalWithdrawn || 0),
           completedOrders: completedOrdersMap.get(balance.userId) || 0,
-          pendingOrders: pendingOrdersMap.get(balance.userId) || 0
+          pendingOrders: pendingOrdersMap.get(balance.userId) || 0,
+          pendingEarnings: Number(pendingEarningsMap.get(balance.userId) || 0),
+          hasOpenRequest: openRequestUserIds.has(balance.userId)
         };
       })
       .filter((p: any) => p !== null)

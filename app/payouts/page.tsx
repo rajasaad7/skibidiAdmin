@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, CheckCircle, XCircle, DollarSign, User, TrendingUp, AlertCircle, Eye, Copy, Check, X } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, DollarSign, Eye, Copy, Check, X } from 'lucide-react';
 
 interface PaymentDetails {
   paypalEmail?: string | null;
@@ -61,24 +61,6 @@ interface ContactDetails {
   [key: string]: any;
 }
 
-interface PublisherEarnings {
-  _id: string;
-  fullName: string;
-  email: string;
-  totalEarnings: number;
-  pendingPayout: number;
-  paidOut: number;
-  completedOrders: number;
-  pendingOrders: number;
-}
-
-interface PayoutStats {
-  totalOwed: number;
-  totalPaid: number;
-  publishersCount: number;
-  pendingOrdersValue: number;
-}
-
 interface Payout {
   _id: string;
   userId: string;
@@ -103,18 +85,6 @@ interface Payout {
 }
 
 export default function PayoutsPage() {
-  const [view, setView] = useState<'earnings' | 'requests'>('earnings');
-
-  // Earnings state
-  const [publishers, setPublishers] = useState<PublisherEarnings[]>([]);
-  const [earningsStats, setEarningsStats] = useState<PayoutStats>({
-    totalOwed: 0,
-    totalPaid: 0,
-    publishersCount: 0,
-    pendingOrdersValue: 0
-  });
-  const [earningsFilter, setEarningsFilter] = useState<'all' | 'pending' | 'paid'>('all');
-
   // Payout requests state
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
@@ -284,19 +254,6 @@ export default function PayoutsPage() {
     return fields.filter((f) => f.value !== null && f.value !== undefined && String(f.value).trim() !== '');
   };
 
-  const fetchPublisherEarnings = async () => {
-    try {
-      const response = await fetch('/api/payouts/earnings');
-      const data = await response.json();
-      if (data.success) {
-        setPublishers(data.publishers);
-        setEarningsStats(data.stats);
-      }
-    } catch (error) {
-      console.error('Error fetching publisher earnings:', error);
-    }
-  };
-
   const fetchPayouts = async () => {
     setLoading(true);
     try {
@@ -319,19 +276,11 @@ export default function PayoutsPage() {
   };
 
   useEffect(() => {
-    if (view === 'earnings') {
-      fetchPublisherEarnings();
-    } else {
-      fetchPayouts();
-    }
-  }, [view, filter]);
+    fetchPayouts();
+  }, [filter]);
 
   const handleRefresh = () => {
-    if (view === 'earnings') {
-      fetchPublisherEarnings();
-    } else {
-      fetchPayouts();
-    }
+    fetchPayouts();
   };
 
   const handleMarkAsProcessing = async (payoutId: string) => {
@@ -400,222 +349,19 @@ export default function PayoutsPage() {
     }
   };
 
-  const getFilteredPublishers = () => {
-    if (earningsFilter === 'pending') {
-      return publishers.filter(p => p.pendingPayout > 0);
-    } else if (earningsFilter === 'paid') {
-      return publishers.filter(p => p.paidOut > 0);
-    }
-    return publishers;
-  };
-
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-        <h1 className="text-lg md:text-3xl font-bold text-gray-900">Publisher Payouts</h1>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setView('earnings')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                view === 'earnings'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Earnings
-            </button>
-            <button
-              onClick={() => setView('requests')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition ${
-                view === 'requests'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Requests
-            </button>
-          </div>
-          <button
-            onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
+        <h1 className="text-lg md:text-3xl font-bold text-gray-900">Payout Requests</h1>
+        <button
+          onClick={handleRefresh}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition self-start md:self-auto"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Refresh
+        </button>
       </div>
 
-      {view === 'earnings' ? (
-        <>
-          {/* Earnings Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5 text-red-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-red-600 font-medium">Total Owed</p>
-                  <p className="text-2xl font-bold text-red-700">${earningsStats.totalOwed.toFixed(2)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-green-600 font-medium">Total Paid Out</p>
-                  <p className="text-2xl font-bold text-green-700">${earningsStats.totalPaid.toFixed(2)}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <User className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-blue-600 font-medium">Active Publishers</p>
-                  <p className="text-2xl font-bold text-blue-700">{earningsStats.publishersCount}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-yellow-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-yellow-600 font-medium">Pending Orders Value</p>
-                  <p className="text-2xl font-bold text-yellow-700">${earningsStats.pendingOrdersValue.toFixed(2)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Earnings Filter Tabs */}
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => setEarningsFilter('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                earningsFilter === 'all'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              All Publishers ({publishers.length})
-            </button>
-            <button
-              onClick={() => setEarningsFilter('pending')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                earningsFilter === 'pending'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              With Pending ({publishers.filter(p => p.pendingPayout > 0).length})
-            </button>
-            <button
-              onClick={() => setEarningsFilter('paid')}
-              className={`px-4 py-2 rounded-lg font-medium transition ${
-                earningsFilter === 'paid'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              Paid Before ({publishers.filter(p => p.paidOut > 0).length})
-            </button>
-          </div>
-
-          {/* Publishers Earnings Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Publisher</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Email</th>
-                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">Total Earnings</th>
-                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">Pending Payout</th>
-                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">Already Paid</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Completed</th>
-                    <th className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Pending</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {publishers.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                        No publishers found
-                      </td>
-                    </tr>
-                  ) : (
-                    getFilteredPublishers().map((publisher) => (
-                      <tr key={publisher._id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                              <User className="w-4 h-4 text-blue-600" />
-                            </div>
-                            <span className="font-medium text-gray-900">{publisher.fullName}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {publisher.email}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <span className="font-semibold text-gray-900">
-                            ${publisher.totalEarnings.toFixed(2)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          {publisher.pendingPayout > 0 ? (
-                            <span className="font-semibold text-red-600">
-                              ${publisher.pendingPayout.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">$0.00</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          {publisher.paidOut > 0 ? (
-                            <span className="font-semibold text-green-600">
-                              ${publisher.paidOut.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">$0.00</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                            {publisher.completedOrders}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          {publisher.pendingOrders > 0 ? (
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                              {publisher.pendingOrders}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">0</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
           {/* Payout Requests Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
@@ -741,8 +487,6 @@ export default function PayoutsPage() {
               </table>
             </div>
           </div>
-        </>
-      )}
 
       {detailsPayout && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

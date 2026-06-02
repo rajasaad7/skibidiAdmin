@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase, Shield, Flag } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase, Shield, Flag, Wallet } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -63,6 +63,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
     { href: '/domains', icon: Globe, label: 'Domains', roles: ['super_admin', 'colleague'] },
     { href: '/orders', icon: ShoppingCart, label: 'Orders', roles: ['super_admin'] },
     { href: '/payouts', icon: DollarSign, label: 'Payouts', roles: ['super_admin'] },
+    { href: '/balance', icon: Wallet, label: 'Balance', roles: ['super_admin'] },
     { href: '/indexer', icon: Zap, label: 'Indexer', roles: ['super_admin'] },
     { href: '/contacts', icon: Mail, label: 'Contact Submissions', roles: ['super_admin', 'colleague'] },
     { href: '/white-label-leads', icon: Briefcase, label: 'White Label Leads', roles: ['super_admin', 'colleague'] },
