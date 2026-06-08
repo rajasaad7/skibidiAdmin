@@ -84,6 +84,13 @@ export default function DomainsPage() {
   const [syncingUpdateStatsFromSheet, setSyncingUpdateStatsFromSheet] = useState(false);
   const [showNAStatsDropdown, setShowNAStatsDropdown] = useState(false);
   const [showUpdateStatsDropdown, setShowUpdateStatsDropdown] = useState(false);
+  const [approvingTrafficOfferings, setApprovingTrafficOfferings] = useState(false);
+  const [approveProgress, setApproveProgress] = useState<{
+    phase: string;
+    scanned: number;
+    approved: number;
+    total: number;
+  } | null>(null);
   const [uploadResult, setUploadResult] = useState<{ success: boolean; updatedCount: number; errors?: string[]; totalProcessed: number } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'file' | 'paste'>('file');
@@ -164,11 +171,21 @@ export default function DomainsPage() {
     cancelText?: string;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
+  const COMMON_REJECTION_REASONS = [
+    'Low quality spam site',
+    'No / low organic traffic',
+    'Poor domain authority',
+    'Irrelevant or prohibited niche',
+    'Duplicate offering',
+    'Price too high for metrics',
+  ];
+
   const [inputModal, setInputModal] = useState<{
     isOpen: boolean;
     title: string;
     message: string;
     placeholder?: string;
+    quickReasons?: string[];
     onConfirm: (value: string) => void;
   }>({ isOpen: false, title: '', message: '', placeholder: '', onConfirm: () => {} });
 
@@ -274,12 +291,110 @@ export default function DomainsPage() {
     }
   };
 
+  const handleApproveAllWithTraffic = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Approve Pending Offerings',
+      message: 'Approve all pending offerings whose domain has organic traffic greater than 0? This cannot be undone in bulk.',
+      confirmText: 'Approve',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setApprovingTrafficOfferings(true);
+        setApproveProgress({ phase: 'scanning', scanned: 0, approved: 0, total: 0 });
+        try {
+          const response = await fetch('/api/domains/approve-pending-with-traffic', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+
+          if (!response.ok || !response.body) {
+            throw new Error('Failed to start approval');
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          const outcome: { result: { count: number; domainCount: number } | null; error: string | null } = {
+            result: null,
+            error: null
+          };
+
+          const handleEvent = (evt: any) => {
+            if (evt.type === 'scan') {
+              setApproveProgress((prev) => ({
+                phase: 'scanning',
+                scanned: evt.scanned,
+                approved: prev?.approved || 0,
+                total: prev?.total || 0
+              }));
+            } else if (evt.type === 'phase') {
+              setApproveProgress((prev) => ({
+                phase: evt.phase,
+                scanned: prev?.scanned || 0,
+                approved: prev?.approved || 0,
+                total: evt.total ?? prev?.total ?? 0
+              }));
+            } else if (evt.type === 'progress') {
+              setApproveProgress((prev) => ({
+                phase: 'approving',
+                scanned: prev?.scanned || 0,
+                approved: evt.approved,
+                total: evt.total
+              }));
+            } else if (evt.type === 'done') {
+              outcome.result = { count: evt.count, domainCount: evt.domainCount };
+            } else if (evt.type === 'error') {
+              outcome.error = evt.error;
+            }
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              if (line.trim()) handleEvent(JSON.parse(line));
+            }
+          }
+          if (buffer.trim()) handleEvent(JSON.parse(buffer));
+
+          if (outcome.error) throw new Error(outcome.error);
+
+          const result = outcome.result;
+          setAlertModal({
+            isOpen: true,
+            title: 'Success',
+            message: result && result.count > 0
+              ? `Successfully approved ${result.count} pending offering(s) across ${result.domainCount} domain(s) with traffic.`
+              : 'No pending offerings with traffic were found to approve.',
+            type: 'success'
+          });
+          fetchDomains();
+        } catch (error: any) {
+          console.error('Error approving offerings with traffic:', error);
+          setAlertModal({
+            isOpen: true,
+            title: 'Error',
+            message: error?.message || 'Error approving offerings',
+            type: 'error'
+          });
+        } finally {
+          setApprovingTrafficOfferings(false);
+          setApproveProgress(null);
+        }
+      }
+    });
+  };
+
   const handleRejectOffering = async (domainId: string, offeringIndex: number) => {
     setInputModal({
       isOpen: true,
       title: 'Reject Offering',
       message: 'Please enter the reason for rejection:',
       placeholder: 'Enter rejection reason...',
+      quickReasons: COMMON_REJECTION_REASONS,
       onConfirm: async (reason) => {
         if (!reason) return;
         try {
@@ -542,7 +657,7 @@ export default function DomainsPage() {
       setConfirmModal({
         isOpen: true,
         title: 'Approve Pending Offerings',
-        message: `Are you sure you want to approve ${countData.pending} PENDING offering(s) for ${countData.domainCount} selected domain(s)?`,
+        message: `Are you sure you want to approve ${countData.pending} pending offering(s) for ${countData.domainCount} selected domain(s)?`,
         confirmText: 'Approve',
         cancelText: 'Cancel',
         onConfirm: async () => {
@@ -621,7 +736,7 @@ export default function DomainsPage() {
       setConfirmModal({
         isOpen: true,
         title: 'Approve All Offerings',
-        message: `Are you sure you want to approve ALL publisher offerings (including already approved/rejected) for ${countData.domainCount} selected domain(s)? This will approve ${countData.total} offering(s) in total.`,
+        message: `Are you sure you want to approve all publisher offerings (including already approved/rejected) for ${countData.domainCount} selected domain(s)? This will approve ${countData.total} offering(s) in total.`,
         confirmText: 'Approve All',
         cancelText: 'Cancel',
         onConfirm: async () => {
@@ -710,8 +825,9 @@ export default function DomainsPage() {
       setInputModal({
         isOpen: true,
         title: 'Reject Pending Offerings',
-        message: `Enter rejection reason for ${countData.pending} PENDING offering(s):`,
+        message: `Enter rejection reason for ${countData.pending} pending offering(s):`,
         placeholder: 'Enter rejection reason...',
+        quickReasons: COMMON_REJECTION_REASONS,
         onConfirm: async (reason) => {
           if (!reason) return;
           try {
@@ -790,8 +906,9 @@ export default function DomainsPage() {
       setInputModal({
         isOpen: true,
         title: 'Reject All Offerings',
-        message: `Enter rejection reason for ALL ${countData.total} offering(s) (including already approved/rejected):`,
+        message: `Enter rejection reason for all ${countData.total} offering(s) (including already approved/rejected):`,
         placeholder: 'Enter rejection reason...',
+        quickReasons: COMMON_REJECTION_REASONS,
         onConfirm: async (reason) => {
           if (!reason) return;
           try {
@@ -2623,6 +2740,24 @@ export default function DomainsPage() {
             Refresh
           </button>
 
+          {/* Approve all pending offerings with traffic > 0 */}
+          <button
+            onClick={handleApproveAllWithTraffic}
+            disabled={approvingTrafficOfferings}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {approvingTrafficOfferings ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <CheckCircle className="w-4 h-4" />
+            )}
+            {approvingTrafficOfferings
+              ? approveProgress?.phase === 'approving'
+                ? `Approving ${approveProgress?.approved ?? 0}/${approveProgress?.total ?? 0}...`
+                : 'Scanning...'
+              : 'Approve Pending (Traffic > 0)'}
+          </button>
+
           {/* N/A Stats Dropdown */}
           <div className="relative">
             <button
@@ -2724,6 +2859,59 @@ export default function DomainsPage() {
           </div>
         </div>
       </div>
+
+      {/* Approve-pending progress toast */}
+      {approvingTrafficOfferings && approveProgress && (
+        <div className="fixed bottom-6 right-6 z-[60] w-80 bg-white rounded-xl shadow-2xl border border-gray-200 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <RefreshCw className="w-4 h-4 text-green-600 animate-spin" />
+            <span className="text-sm font-semibold text-gray-900">
+              {approveProgress.phase === 'scanning'
+                ? 'Finding pending offerings'
+                : approveProgress.phase === 'checking'
+                  ? 'Checking domain traffic'
+                  : 'Approving offerings'}
+            </span>
+          </div>
+
+          {approveProgress.phase === 'approving' ? (
+            <>
+              <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden mb-2">
+                <div
+                  className="h-full rounded-full bg-green-500 transition-all duration-300"
+                  style={{
+                    width: `${approveProgress.total > 0
+                      ? Math.min(100, Math.round((approveProgress.approved / approveProgress.total) * 100))
+                      : 0}%`
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>
+                  {approveProgress.approved.toLocaleString()} / {approveProgress.total.toLocaleString()} offerings
+                </span>
+                <span className="font-semibold text-green-600">
+                  {approveProgress.total > 0
+                    ? Math.round((approveProgress.approved / approveProgress.total) * 100)
+                    : 0}
+                  %
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden mb-2">
+                <div className="h-full w-1/3 rounded-full bg-green-500 animate-pulse" />
+              </div>
+              <p className="text-xs text-gray-500">
+                {approveProgress.phase === 'scanning'
+                  ? `Found ${approveProgress.scanned.toLocaleString()} pending offering(s) so far...`
+                  : 'Matching offerings to domains with traffic...'}
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Stats Cards - Now Clickable Filters */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-6">
@@ -3524,6 +3712,29 @@ export default function DomainsPage() {
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">{inputModal.title}</h3>
             <p className="text-gray-600 mb-4">{inputModal.message}</p>
+            {inputModal.quickReasons && inputModal.quickReasons.length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-medium text-gray-500 mb-2">Quick reasons</p>
+                <div className="flex flex-wrap gap-2">
+                  {inputModal.quickReasons.map((reason) => (
+                    <button
+                      key={reason}
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById('modal-input') as HTMLInputElement;
+                        if (input) {
+                          input.value = reason;
+                          input.focus();
+                        }
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-full hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition"
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <input
               type="text"
               id="modal-input"
