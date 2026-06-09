@@ -122,7 +122,7 @@ export function formatKycInitiatedEmail(data: {
   actionUrl?: string;
 }) {
   const name = data.fullName?.trim() || 'there';
-  const url = data.actionUrl || 'https://app.linkwatcher.io/marketplace/publisher/settings';
+  const url = data.actionUrl || 'https://app.linkwatcher.io/marketplace/publisher/settings?tab=account-status';
   // Hosted PNG logo (email clients block SVG, so we use a raster URL).
   const logoUrl = LINKWATCHER_LOGO_URL;
   return `

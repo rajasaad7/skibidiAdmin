@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
           fullName: user.fullName,
           taskTitle: data.title,
           taskDescription: data.description,
-          actionUrl: 'https://app.linkwatcher.io/marketplace/publisher/settings',
+          actionUrl: 'https://app.linkwatcher.io/marketplace/publisher/settings?tab=account-status',
         }),
       });
     } catch (mailErr) {
