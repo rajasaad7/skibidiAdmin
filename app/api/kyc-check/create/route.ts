@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { sendTrueEmailer, formatKycInitiatedEmail } from '@/lib/email';
 
 // Built-in task templates. taskType drives the publisher's submission form.
 const TEMPLATES: Record<string, { title: string; description: string }> = {
@@ -48,6 +49,26 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // Notify the publisher that a verification task was opened for them.
+    // Best-effort: a mail failure must not fail the KYC creation.
+    try {
+      await sendTrueEmailer({
+        to: [{ email: user.email, name: user.fullName || undefined }],
+        subject: 'Action required: verify your Linkwatcher account',
+        senderName: 'Linkwatcher Compliance',
+        senderEmail: 'compliance@linkwatcher.io',
+        replyTo: 'compliance@linkwatcher.io',
+        htmlContent: formatKycInitiatedEmail({
+          fullName: user.fullName,
+          taskTitle: data.title,
+          taskDescription: data.description,
+          actionUrl: 'https://app.linkwatcher.io/marketplace/publisher/settings',
+        }),
+      });
+    } catch (mailErr) {
+      console.error('KYC email notification failed (non-blocking):', mailErr);
+    }
 
     return NextResponse.json({ success: true, task: { ...data, user } });
   } catch (error: any) {
