@@ -54,11 +54,14 @@ export async function GET() {
 
     if (completedError) throw completedError;
 
-    // Publishers with an open (pending/processing) payout request — used to flag
-    // who has already submitted a request vs. who is still sitting on a balance.
+    // Publishers with an open (pending/processing) payout request. The requested
+    // amount was already deducted from currentBalance when the request was created,
+    // but the money is still physically with us until an admin marks it paid. We
+    // surface the net amount we're still holding (amount - fee) per publisher so the
+    // tab reflects the real, in-flight payout — not just a yes/no flag.
     const { data: openRequests, error: openError } = await supabase
       .from('publisher_payouts')
-      .select('"userId"')
+      .select('"userId", amount, "payoutFee", "amountReceived"')
       .in('status', ['pending', 'processing']);
 
     if (openError) throw openError;
@@ -66,6 +69,19 @@ export async function GET() {
     const openRequestUserIds = new Set(
       (openRequests || []).map((r: any) => r.userId).filter(Boolean)
     );
+
+    // Net amount (amount - fee) of open requests per publisher — what we still owe out.
+    const openRequestAmountMap = new Map<string, number>();
+    (openRequests || []).forEach((r: any) => {
+      if (!r.userId) return;
+      const received = r.amountReceived
+        ? Number(r.amountReceived)
+        : Number(r.amount || 0) - Number(r.payoutFee || 0);
+      openRequestAmountMap.set(
+        r.userId,
+        (openRequestAmountMap.get(r.userId) || 0) + received
+      );
+    });
 
     // Count pending and completed orders by publisher
     const pendingOrdersMap = new Map<string, number>();
@@ -102,7 +118,8 @@ export async function GET() {
           completedOrders: completedOrdersMap.get(balance.userId) || 0,
           pendingOrders: pendingOrdersMap.get(balance.userId) || 0,
           pendingEarnings: Number(pendingEarningsMap.get(balance.userId) || 0),
-          hasOpenRequest: openRequestUserIds.has(balance.userId)
+          hasOpenRequest: openRequestUserIds.has(balance.userId),
+          openRequestAmount: Number(openRequestAmountMap.get(balance.userId) || 0)
         };
       })
       .filter((p: any) => p !== null)
@@ -113,12 +130,20 @@ export async function GET() {
       sum + Number(o.publisherEarnings || 0), 0
     );
 
+    // Money already deducted from balances via open payout requests but not yet
+    // paid out — we still physically hold it.
+    const openRequestsValue = Array.from(openRequestAmountMap.values()).reduce(
+      (sum: number, v: number) => sum + v,
+      0
+    );
+
     // Calculate stats
     const stats = {
       totalOwed: publishers.reduce((sum: number, p: any) => sum + p.pendingPayout, 0),
       totalPaid: publishers.reduce((sum: number, p: any) => sum + p.paidOut, 0),
       publishersCount: publishers.length,
-      pendingOrdersValue
+      pendingOrdersValue,
+      openRequestsValue
     };
 
     return NextResponse.json({

@@ -60,10 +60,29 @@ export async function GET() {
       .gt('currentBalance', 0);
     if (pubError) throw pubError;
 
-    const publisherBalance = (pubBalances || []).reduce(
+    const publisherAvailable = (pubBalances || []).reduce(
       (sum: number, b: any) => sum + Number(b.currentBalance || 0),
       0
     );
+
+    // Open payout requests (pending/processing): the amount was already deducted
+    // from currentBalance when the request was created, but the cash is still with
+    // us until an admin marks it paid. So we still OWE it — add it back in. Use the
+    // net amount the publisher receives (amount - fee); the fee is our revenue.
+    const { data: openPayouts, error: openPayoutsError } = await supabase
+      .from('publisher_payouts')
+      .select('amount, "payoutFee", "amountReceived"')
+      .in('status', ['pending', 'processing']);
+    if (openPayoutsError) throw openPayoutsError;
+
+    const publisherOpenRequests = (openPayouts || []).reduce((sum: number, p: any) => {
+      const received = p.amountReceived
+        ? Number(p.amountReceived)
+        : Number(p.amount || 0) - Number(p.payoutFee || 0);
+      return sum + received;
+    }, 0);
+
+    const publisherBalance = publisherAvailable + publisherOpenRequests;
 
     // --- Cash we hold (manual platform rows) ------------------------------
     const { data: rows, error: rowsError } = await supabase

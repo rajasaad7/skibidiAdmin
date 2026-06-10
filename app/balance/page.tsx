@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Wallet, TrendingUp, User, AlertCircle, RotateCcw, ShoppingCart, Plus, Trash2, Check, X, Pencil } from 'lucide-react';
+import { Wallet, TrendingUp, User, AlertCircle, RotateCcw, ShoppingCart, Plus, Trash2, Check, X, Pencil, Send } from 'lucide-react';
 
 interface BuyerBalance {
   _id: string;
@@ -38,6 +38,7 @@ interface PublisherEarnings {
   pendingOrders: number;
   pendingEarnings: number;
   hasOpenRequest: boolean;
+  openRequestAmount: number;
 }
 
 interface AccountBalanceRow {
@@ -235,19 +236,23 @@ export default function BalancePage() {
     ? surplusRows.reduce((max, r) => (Number(r.amount) > Number(max.amount) ? r : max))
     : null;
 
-  // Publishers who hold a balance but have NOT submitted a payout request yet.
+  // Publishers we still hold money for: either an available balance, or a
+  // submitted (pending/processing) payout request whose amount was already
+  // deducted from their balance but is still physically with us until paid.
   const pendingPublishers = publishers.filter(
-    (p) => p.pendingPayout > 0 && !p.hasOpenRequest
+    (p) => p.pendingPayout > 0 || p.openRequestAmount > 0
   );
   const filteredPublishers = pendingPublishers.filter((p) =>
     matchesSearch(p.fullName, p.email)
   );
 
   const publisherStats = {
-    // Sum of the table's "Total" column = available balance + pending earnings.
-    totalOwed: pendingPublishers.reduce((sum, p) => sum + p.pendingPayout + p.pendingEarnings, 0),
+    // Sum of the table's "Total" column = available balance + pending earnings + submitted payouts.
+    totalOwed: pendingPublishers.reduce((sum, p) => sum + p.pendingPayout + p.pendingEarnings + p.openRequestAmount, 0),
     totalAvailable: pendingPublishers.reduce((sum, p) => sum + p.pendingPayout, 0),
     totalPending: pendingPublishers.reduce((sum, p) => sum + p.pendingEarnings, 0),
+    // Money tied up in submitted payout requests we still hold (pending/processing).
+    totalSubmitted: pendingPublishers.reduce((sum, p) => sum + p.openRequestAmount, 0),
     publishersCount: pendingPublishers.length,
   };
 
@@ -442,14 +447,14 @@ export default function BalancePage() {
       ) : tab === 'publishers' ? (
         <>
           {/* Publisher Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
                   <AlertCircle className="w-5 h-5 text-red-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 font-medium">Total (Balance + Pending)</p>
+                  <p className="text-sm text-gray-500 font-medium">Total</p>
                   <p className="text-2xl font-bold text-gray-900">${publisherStats.totalOwed.toFixed(2)}</p>
                 </div>
               </div>
@@ -481,6 +486,18 @@ export default function BalancePage() {
 
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
+                  <Send className="w-5 h-5 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 font-medium">Submitted Payouts</p>
+                  <p className="text-2xl font-bold text-gray-900">${publisherStats.totalSubmitted.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
                   <User className="w-5 h-5 text-purple-600" />
                 </div>
@@ -491,10 +508,6 @@ export default function BalancePage() {
               </div>
             </div>
           </div>
-
-          <p className="text-sm text-gray-500 mb-4">
-            Publishers holding a balance who have not submitted a payout request yet.
-          </p>
 
           {/* Search */}
           <div className="mb-6">
@@ -517,6 +530,7 @@ export default function BalancePage() {
                     <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Email</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">Available Balance</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">Pending Earnings</th>
+                    <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">Submitted Payout</th>
                     <th className="px-6 py-4 text-right text-sm font-semibold text-gray-900">Total</th>
                   </tr>
                 </thead>
@@ -560,8 +574,17 @@ export default function BalancePage() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-right">
+                          {publisher.openRequestAmount > 0 ? (
+                            <span className="font-semibold text-orange-600">
+                              ${publisher.openRequestAmount.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">$0.00</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
                           <span className="font-bold text-gray-900">
-                            ${(publisher.pendingPayout + publisher.pendingEarnings).toFixed(2)}
+                            ${(publisher.pendingPayout + publisher.pendingEarnings + publisher.openRequestAmount).toFixed(2)}
                           </span>
                         </td>
                       </tr>
