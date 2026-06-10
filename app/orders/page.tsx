@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle } from 'lucide-react';
+import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface Order {
@@ -54,6 +54,8 @@ interface Order {
   refundedAt?: string;
   // Verification
   manualVerified?: boolean;
+  // How the order was placed: 'browse' | 'featured' | 'assistant'
+  orderSource?: string;
   // Relations
   domains?: {
     domainName: string;
@@ -645,7 +647,18 @@ export default function OrdersPage() {
                 getFilteredOrders().map((order) => (
                   <tr key={order._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      {order.orderNumber}
+                      <div className="flex items-center gap-2">
+                        <span>{order.orderNumber}</span>
+                        {order.orderSource === 'assistant' && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-violet-100 text-violet-700"
+                            title="Placed via AI assistant"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            AI
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       {order.domains?.domainName || 'N/A'}

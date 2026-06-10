@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
         deadlineAt,
         completedAt,
         manualVerified,
+        orderSource,
         domainId,
         domains!domainId(domainName)
       `, { count: 'exact' })
