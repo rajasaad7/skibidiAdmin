@@ -1,6 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+const KYC_BUCKET = 'kyc-documents';
+const KYC_SIGNED_URL_TTL = 60 * 60; // 1 hour
+
+// Turn a stored KYC storage path into a short-lived signed URL the admin can open.
+async function signKycPath(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const { data } = await supabase.storage.from(KYC_BUCKET).createSignedUrl(path, KYC_SIGNED_URL_TTL);
+  return data?.signedUrl || null;
+}
+
+// Fetch the user's KYC tasks (most recent first) with their submitted documents,
+// each document carrying a signed URL the admin can open from the payout modal.
+async function getKycForUser(userId: string) {
+  const { data: tasks } = await supabase
+    .from('publisher_kyc_tasks')
+    .select('_id, title, status, "taskType", "submittedCountry", "submittedDocType", "submittedDocNumber", "submittedAddress", "submittedAt", "reviewNote", "completedAt"')
+    .eq('userId', userId)
+    .order('"submittedAt"', { ascending: false, nullsFirst: false })
+    .order('"createdAt"', { ascending: false });
+
+  if (!tasks || tasks.length === 0) return [];
+
+  return Promise.all(
+    tasks.map(async (t: any) => {
+      const { data: fileRows } = await supabase
+        .from('kyc_submission_files')
+        .select('_id, label, "fileName", "mimeType", round, "storagePath", "createdAt"')
+        .eq('taskId', t._id)
+        .order('createdAt', { ascending: true });
+
+      const files = await Promise.all(
+        (fileRows || []).map(async (f: any) => ({
+          _id: f._id,
+          label: f.label,
+          fileName: f.fileName,
+          mimeType: f.mimeType,
+          round: f.round,
+          url: await signKycPath(f.storagePath),
+        }))
+      );
+
+      return { ...t, files };
+    })
+  );
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
@@ -26,6 +72,7 @@ export async function GET(request: NextRequest) {
     const payoutsWithUsers = await Promise.all(
       (data || []).map(async (payout) => {
         let userData = null;
+        let kycTasks: any[] = [];
         if (payout.userId) {
           const { data: user } = await supabase
             .from('users')
@@ -33,6 +80,7 @@ export async function GET(request: NextRequest) {
             .eq('_id', payout.userId)
             .single();
           userData = user;
+          kycTasks = await getKycForUser(payout.userId);
         }
 
         // Fetch the saved payout method the publisher selected for this request.
@@ -57,6 +105,7 @@ export async function GET(request: NextRequest) {
           ...payout,
           user: userData,
           payoutMethod,
+          kycTasks,
           amountReceived: amountReceived.toFixed(2)
         };
       })

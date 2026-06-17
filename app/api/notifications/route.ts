@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET() {
   try {
     // Fetch all counts in parallel for better performance
-    const [contactsResult, bugsResult, statsResult, payoutsResult, whiteLabelLeadsResult, moderationRequestsResult, sinbyteBalanceResult] = await Promise.all([
+    const [contactsResult, bugsResult, statsResult, payoutsResult, processingPayoutsResult, whiteLabelLeadsResult, moderationRequestsResult, sinbyteBalanceResult] = await Promise.all([
       // Get count of new contacts (status = 'new' or 'pending')
       supabase
         .from('contacts')
@@ -20,12 +20,18 @@ export async function GET() {
       // Get domain stats using RPC function (same as domains page)
       supabase.rpc('get_domain_stats'),
 
-      // Pending payouts older than 7 days — these are the requests that need action
+      // Overdue payouts: pending requests older than 7 days that still need action
       supabase
         .from('publisher_payouts')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending')
         .lte('createdAt', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+
+      // Payouts already marked as processing — these still need to be completed
+      supabase
+        .from('publisher_payouts')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'processing'),
 
       // Get count of pending white label leads (status = 'pending')
       supabase
@@ -59,6 +65,9 @@ export async function GET() {
     if (payoutsResult.error) {
       console.error('Payouts error:', payoutsResult.error);
     }
+    if (processingPayoutsResult.error) {
+      console.error('Processing payouts error:', processingPayoutsResult.error);
+    }
     if (whiteLabelLeadsResult.error) {
       console.error('White label leads error:', whiteLabelLeadsResult.error);
     }
@@ -85,7 +94,7 @@ export async function GET() {
         newBugs: bugsResult.count || 0,
         pendingDomains: stats.pending || 0,
         updateRequests: stats.updateRequests || 0,
-        pendingPayouts: payoutsResult.count || 0,
+        pendingPayouts: (payoutsResult.count || 0) + (processingPayoutsResult.count || 0),
         newWhiteLabelLeads: whiteLabelLeadsResult.count || 0,
         pendingModerationRequests: moderationRequestsResult.count || 0,
         lowSinbyteBalance,

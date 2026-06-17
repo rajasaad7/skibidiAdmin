@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { RefreshCw, CheckCircle, XCircle, DollarSign, Eye, Copy, Check, X } from 'lucide-react';
+import { RefreshCw, CheckCircle, XCircle, DollarSign, Eye, Copy, Check, X, FileText, ExternalLink } from 'lucide-react';
 
 interface PaymentDetails {
   paypalEmail?: string | null;
@@ -61,6 +61,32 @@ interface ContactDetails {
   [key: string]: any;
 }
 
+// One uploaded KYC document, with a short-lived signed URL.
+interface KycFile {
+  _id: string;
+  label?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  round?: number | null;
+  url?: string | null;
+}
+
+// A publisher's KYC task plus its submitted documents.
+interface KycTask {
+  _id: string;
+  title?: string | null;
+  status?: string | null;
+  taskType?: string | null;
+  submittedCountry?: string | null;
+  submittedDocType?: string | null;
+  submittedDocNumber?: string | null;
+  submittedAddress?: string | null;
+  submittedAt?: string | null;
+  reviewNote?: string | null;
+  completedAt?: string | null;
+  files?: KycFile[];
+}
+
 interface Payout {
   _id: string;
   userId: string;
@@ -75,6 +101,7 @@ interface Payout {
   payoutMethod?: PayoutMethod | null;
   payoutFee?: number | null;
   amountReceived?: string | number | null;
+  kycTasks?: KycTask[];
   user?: {
     _id: string;
     email: string;
@@ -153,6 +180,32 @@ export default function PayoutsPage() {
         return 'Payoneer';
       default:
         return type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Unknown';
+    }
+  };
+
+  // Human-readable label for a KYC task type.
+  const kycTaskTypeLabel = (type?: string | null) => {
+    switch ((type || '').toLowerCase()) {
+      case 'basic_kyc':
+        return 'Basic KYC';
+      case 'proof_of_address':
+        return 'Proof of Address';
+      default:
+        return type
+          ? type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+          : 'KYC';
+    }
+  };
+
+  // Color classes for a KYC task status badge.
+  const kycStatusClass = (status?: string | null) => {
+    switch ((status || '').toLowerCase()) {
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'in_review':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-amber-100 text-amber-800';
     }
   };
 
@@ -607,6 +660,101 @@ export default function PayoutsPage() {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* KYC verification details for this publisher */}
+                <div className="border-t border-gray-200 pt-5 space-y-3">
+                  <h4 className="text-sm font-semibold text-gray-900">KYC Verification</h4>
+                  {(() => {
+                    const tasks = detailsPayout.kycTasks || [];
+                    if (tasks.length === 0) {
+                      return (
+                        <p className="text-sm text-gray-500 text-center py-4 border border-dashed border-gray-200 rounded-lg">
+                          No KYC submissions on file.
+                        </p>
+                      );
+                    }
+                    return tasks.map((task) => {
+                      const kycFields: Field[] = [
+                        { label: 'Country', key: 'submittedCountry', value: task.submittedCountry },
+                        { label: 'Document Type', key: 'submittedDocType', value: task.submittedDocType },
+                        { label: 'Document Number', key: 'submittedDocNumber', value: task.submittedDocNumber, copyable: true },
+                        { label: 'Address', key: 'submittedAddress', value: task.submittedAddress, copyable: true },
+                      ].filter((f) => f.value && String(f.value).trim() !== '');
+
+                      return (
+                        <div key={task._id} className="border border-gray-200 rounded-lg p-3 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-gray-900">
+                              {kycTaskTypeLabel(task.taskType)}
+                            </span>
+                            {task.status && (
+                              <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full ${kycStatusClass(task.status)}`}>
+                                {task.status.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </div>
+
+                          {kycFields.length > 0 && (
+                            <div className="space-y-2">
+                              {kycFields.map((f) => (
+                                <div key={f.key} className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">{f.label}</div>
+                                    <div className="text-sm text-gray-900 break-all">{f.value}</div>
+                                  </div>
+                                  {f.copyable && (
+                                    <button
+                                      onClick={() => copyValue(`kyc-${task._id}-${f.key}`, String(f.value))}
+                                      className="shrink-0 inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100 transition"
+                                      title="Copy"
+                                    >
+                                      {copiedKey === `kyc-${task._id}-${f.key}` ? (
+                                        <><Check className="w-3.5 h-3.5" /> Copied</>
+                                      ) : (
+                                        <><Copy className="w-3.5 h-3.5" /> Copy</>
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {task.files && task.files.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">Submitted Documents</div>
+                              {task.files.map((file) => (
+                                <a
+                                  key={file._id}
+                                  href={file.url || undefined}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-lg border transition ${
+                                    file.url
+                                      ? 'border-gray-200 text-blue-600 hover:bg-blue-50'
+                                      : 'border-gray-200 text-gray-400 pointer-events-none'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <FileText className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="truncate">{file.label || file.fileName || 'Document'}</span>
+                                  </span>
+                                  {file.url && <ExternalLink className="w-3.5 h-3.5 shrink-0" />}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+
+                          {task.reviewNote && (
+                            <p className="text-xs text-gray-600">
+                              <span className="font-medium">Review note:</span> {task.reviewNote}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
