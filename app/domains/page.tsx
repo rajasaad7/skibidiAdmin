@@ -2436,11 +2436,14 @@ export default function DomainsPage() {
         </div>
       )}
 
-      {/* Minimized categorization pill — keeps running in the background */}
+      {/* Minimized categorization pill — keeps running in the background.
+          If the DA pill is also minimized, sit above it so they don't overlap. */}
       {showCategorizationModal && liveCategorizationStatus && categorizationMinimized && (
         <button
           onClick={() => setCategorizationMinimized(false)}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 hover:shadow-xl transition"
+          className={`fixed right-6 z-50 flex items-center gap-3 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 hover:shadow-xl transition ${
+            showDaModal && daProgress && daMinimized ? 'bottom-28' : 'bottom-6'
+          }`}
           title="Restore categorization window"
         >
           <Sparkles className={`w-5 h-5 text-indigo-600 ${liveCategorizationStatus.isProcessing ? 'animate-pulse' : ''}`} />
