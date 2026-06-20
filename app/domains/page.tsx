@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit, Sparkles, ChevronDown, Upload } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit, Sparkles, ChevronDown, Upload, Minimize2, Maximize2 } from 'lucide-react';
 import OfferingModal from '@/components/OfferingModal';
 import DomainEditModal from '@/components/DomainEditModal';
 
@@ -100,6 +100,7 @@ export default function DomainsPage() {
   const [editingDomain, setEditingDomain] = useState<Domain | null>(null);
   const [publisherPages, setPublisherPages] = useState<Record<string, number>>({});
   const [showCategorizationModal, setShowCategorizationModal] = useState(false);
+  const [categorizationMinimized, setCategorizationMinimized] = useState(false);
   const [categorizationProgress, setCategorizationProgress] = useState<{
     total: number;
     completed: number;
@@ -129,6 +130,26 @@ export default function DomainsPage() {
   } | null>(null);
   const [showApproveDropdown, setShowApproveDropdown] = useState(false);
   const [showMoreActionsDropdown, setShowMoreActionsDropdown] = useState(false);
+  // ── DA & Spam Score sheet update (dapachecker.org) ──
+  const [showDaModal, setShowDaModal] = useState(false);
+  const daStopRef = useRef(false);
+  const [daProgress, setDaProgress] = useState<{
+    isProcessing: boolean;
+    stopped: boolean;
+    total: number;
+    processed: number;
+    updated: number;
+    failed: number;
+    message: string;
+    results: Array<{
+      domain: string;
+      rowNumber: number;
+      status: 'success' | 'notfound' | 'error';
+      da?: number | string;
+      spamScore?: number | string;
+      error?: string;
+    }>;
+  } | null>(null);
   const [showTrafficModal, setShowTrafficModal] = useState(false);
   const [trafficProgress, setTrafficProgress] = useState<{
     domains: Array<{
@@ -1359,6 +1380,164 @@ export default function DomainsPage() {
     });
   };
 
+  // ── Fetch DA + Spam Score from dapachecker and fill empty sheet rows ──
+  const handleUpdateDaFromSheet = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Update DA & Spam Score',
+      message:
+        'Fetch DA & Spam Score from dapachecker.org for every empty (or ERROR) row in the Google Sheet and fill them in. This uses dapachecker credits (1 per domain). Continue?',
+      confirmText: 'Fetch & Fill',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        await startDaUpdateProcess();
+      },
+    });
+  };
+
+  const stopDaUpdate = () => {
+    daStopRef.current = true;
+    setDaProgress((prev) => (prev ? { ...prev, message: 'Stopping after the current batch…' } : prev));
+  };
+
+  const startDaUpdateProcess = async () => {
+    daStopRef.current = false;
+    const CHUNK = 5; // dapachecker: 5 URLs/request
+    const PACE_MS = 1200; // stay under 60 URLs/min
+
+    setDaProgress({
+      isProcessing: true,
+      stopped: false,
+      total: 0,
+      processed: 0,
+      updated: 0,
+      failed: 0,
+      message: 'Reading the sheet…',
+      results: [],
+    });
+    setShowDaModal(true);
+
+    // Step 1: get the work-list (rows that need DA/SS)
+    let pending: { rowNumber: number; domain: string }[] = [];
+    try {
+      const res = await fetch('/api/domains/update-da-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'list' }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to read sheet');
+      pending = data.pending || [];
+    } catch (error: any) {
+      setDaProgress((prev) =>
+        prev ? { ...prev, isProcessing: false, message: error.message || 'Failed to read sheet.' } : prev
+      );
+      return;
+    }
+
+    if (pending.length === 0) {
+      setDaProgress((prev) =>
+        prev ? { ...prev, isProcessing: false, message: 'All rows already have DA & Spam Score.' } : prev
+      );
+      return;
+    }
+
+    setDaProgress((prev) =>
+      prev ? { ...prev, total: pending.length, message: `Found ${pending.length} domain(s) to update.` } : prev
+    );
+
+    // Step 2: loop through chunks of 5, updating the modal after each
+    let updated = 0;
+    let failed = 0;
+    let processed = 0;
+
+    for (let i = 0; i < pending.length; i += CHUNK) {
+      if (daStopRef.current) break;
+
+      const items = pending.slice(i, i + CHUNK);
+      try {
+        const res = await fetch('/api/domains/update-da-sheet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'chunk', items }),
+        });
+        const data = await res.json();
+        const chunkResults = data.success ? data.results || [] : [];
+
+        if (!data.success) {
+          // Whole chunk failed at the route level
+          items.forEach((it: { rowNumber: number; domain: string }) =>
+            chunkResults.push({ domain: it.domain, rowNumber: it.rowNumber, status: 'error', error: data.error })
+          );
+        }
+
+        chunkResults.forEach((r: any) => {
+          if (r.status === 'success') updated++;
+          else failed++;
+        });
+        processed += items.length;
+
+        setDaProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                processed,
+                updated,
+                failed,
+                message: `Processing… ${processed}/${pending.length}`,
+                results: [...chunkResults, ...prev.results], // newest on top
+              }
+            : prev
+        );
+      } catch (error: any) {
+        processed += items.length;
+        failed += items.length;
+        setDaProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                processed,
+                failed,
+                message: `Network error on a batch: ${error.message}`,
+                results: [
+                  ...items.map((it: { rowNumber: number; domain: string }) => ({
+                    domain: it.domain,
+                    rowNumber: it.rowNumber,
+                    status: 'error' as const,
+                    error: error.message,
+                  })),
+                  ...prev.results,
+                ],
+              }
+            : prev
+        );
+      }
+
+      // Pace between chunks (skip after the last one)
+      if (i + CHUNK < pending.length && !daStopRef.current) {
+        await new Promise((r) => setTimeout(r, PACE_MS));
+      }
+    }
+
+    const wasStopped = daStopRef.current;
+    setDaProgress((prev) =>
+      prev
+        ? {
+            ...prev,
+            isProcessing: false,
+            stopped: wasStopped,
+            message: wasStopped
+              ? `Stopped. Updated ${updated}, failed/N-A ${failed} (of ${pending.length}).`
+              : `Done. Updated ${updated}, failed/N-A ${failed} (of ${pending.length}).`,
+          }
+        : prev
+    );
+
+    // Refresh the table so any DB-derived view reflects nothing changed (sheet-only),
+    // but clear selection just in case.
+    setSelectedDomains(new Set());
+  };
+
   const handleGetTraffic = async () => {
     const selectedDomainsList = domains.filter(d => selectedDomains.has(d._id));
 
@@ -1596,6 +1775,7 @@ export default function DomainsPage() {
       domains: initialStatus,
       isProcessing: true,
     });
+    setCategorizationMinimized(false);
     setShowCategorizationModal(true);
 
     let successCount = 0;
@@ -2046,7 +2226,7 @@ export default function DomainsPage() {
       )}
 
       {/* Live Categorization Progress Modal */}
-      {showCategorizationModal && liveCategorizationStatus && (
+      {showCategorizationModal && liveCategorizationStatus && !categorizationMinimized && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full h-[90vh] flex flex-col">
             <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -2056,17 +2236,29 @@ export default function DomainsPage() {
                   Auto-Categorizing Domains
                 </h3>
               </div>
-              {!liveCategorizationStatus.isProcessing && (
+              <div className="flex items-center gap-2">
+                {/* Minimize: keep categorizing in the background */}
                 <button
-                  onClick={() => {
-                    setShowCategorizationModal(false);
-                    setLiveCategorizationStatus(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
+                  onClick={() => setCategorizationMinimized(true)}
+                  className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-gray-100 transition"
+                  title="Minimize and keep running in the background"
                 >
-                  <X className="w-5 h-5" />
+                  <Minimize2 className="w-4 h-4" />
+                  Minimize
                 </button>
-              )}
+                {!liveCategorizationStatus.isProcessing && (
+                  <button
+                    onClick={() => {
+                      setShowCategorizationModal(false);
+                      setCategorizationMinimized(false);
+                      setLiveCategorizationStatus(null);
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-1 overflow-hidden flex flex-col">
@@ -2221,7 +2413,148 @@ export default function DomainsPage() {
         </div>
       )}
 
+      {/* Minimized categorization pill — keeps running in the background */}
+      {showCategorizationModal && liveCategorizationStatus && categorizationMinimized && (
+        <button
+          onClick={() => setCategorizationMinimized(false)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 hover:shadow-xl transition"
+          title="Restore categorization window"
+        >
+          <Sparkles className={`w-5 h-5 text-indigo-600 ${liveCategorizationStatus.isProcessing ? 'animate-pulse' : ''}`} />
+          <div className="text-left">
+            <div className="text-xs font-semibold text-gray-900">
+              {liveCategorizationStatus.isProcessing ? 'Categorizing…' : 'Categorization done'}
+            </div>
+            <div className="text-[11px] text-gray-500">
+              {liveCategorizationStatus.domains.filter(d => d.status === 'success').length}
+              /{liveCategorizationStatus.domains.length} done
+              {liveCategorizationStatus.isProcessing &&
+                ` · ${liveCategorizationStatus.domains.filter(d => d.status === 'processing').length} running`}
+            </div>
+          </div>
+          <Maximize2 className="w-4 h-4 text-gray-400" />
+        </button>
+      )}
+
       {/* Traffic Fetch Modal */}
+      {/* ── DA & Spam Score sheet-update modal ── */}
+      {showDaModal && daProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col">
+            <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <RefreshCw className={`w-6 h-6 text-purple-600 ${daProgress.isProcessing ? 'animate-spin' : ''}`} />
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {daProgress.isProcessing ? 'Updating DA & Spam Score…' : 'DA & Spam Score Update'}
+                </h3>
+              </div>
+              {!daProgress.isProcessing && (
+                <button
+                  onClick={() => {
+                    setShowDaModal(false);
+                    setDaProgress(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100">
+              <div className="grid grid-cols-4 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-gray-900">{daProgress.total}</div>
+                  <div className="text-xs text-gray-500">Total</div>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-blue-600">{daProgress.processed}</div>
+                  <div className="text-xs text-gray-500">Processed</div>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-green-600">{daProgress.updated}</div>
+                  <div className="text-xs text-gray-500">Updated</div>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3 text-center">
+                  <div className="text-xl font-bold text-red-600">{daProgress.failed}</div>
+                  <div className="text-xs text-gray-500">Failed / N/A</div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {daProgress.total > 0 && (
+                <div className="mt-3">
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-purple-600 h-2 rounded-full transition-all"
+                      style={{ width: `${Math.round((daProgress.processed / daProgress.total) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <p className="text-sm text-gray-600 mt-3">{daProgress.message}</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {daProgress.results.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">
+                  {daProgress.isProcessing ? 'Working…' : 'No rows needed updating.'}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {daProgress.results.map((r, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-sm px-3 py-2 rounded-lg hover:bg-gray-50"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {r.status === 'success' ? (
+                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        )}
+                        <span className="font-medium text-gray-900 truncate">{r.domain}</span>
+                        <span className="text-gray-400 text-xs">row {r.rowNumber}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 flex-shrink-0">
+                        {r.status === 'success'
+                          ? `DA ${r.da} · SS ${r.spamScore}`
+                          : r.status === 'notfound'
+                          ? 'Not found'
+                          : r.error || 'Error'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 flex justify-end gap-2">
+              {daProgress.isProcessing ? (
+                <button
+                  onClick={stopDaUpdate}
+                  disabled={daStopRef.current}
+                  className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+                >
+                  {daStopRef.current ? 'Stopping…' : 'Stop'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowDaModal(false);
+                    setDaProgress(null);
+                  }}
+                  className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                >
+                  Close
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showTrafficModal && trafficProgress && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col">
@@ -3005,6 +3338,16 @@ export default function DomainsPage() {
 
         {/* Right side: All buttons */}
         <div className="flex items-center gap-2">
+          {/* Standalone: fill empty DA/SS rows in the sheet (not tied to selection) */}
+          <button
+            onClick={handleUpdateDaFromSheet}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition"
+            title="Fetch DA & Spam Score from dapachecker.org and fill empty rows in the Google Sheet"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Get DA &amp; Spam Score
+          </button>
+
           {selectedDomains.size > 0 && (
             <>
               <span className="text-xs text-gray-600 font-medium">
