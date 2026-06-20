@@ -132,6 +132,7 @@ export default function DomainsPage() {
   const [showMoreActionsDropdown, setShowMoreActionsDropdown] = useState(false);
   // ── DA & Spam Score sheet update (dapachecker.org) ──
   const [showDaModal, setShowDaModal] = useState(false);
+  const [daMinimized, setDaMinimized] = useState(false);
   const daStopRef = useRef(false);
   const [daProgress, setDaProgress] = useState<{
     isProcessing: boolean;
@@ -1403,7 +1404,11 @@ export default function DomainsPage() {
   const startDaUpdateProcess = async () => {
     daStopRef.current = false;
     const CHUNK = 5; // dapachecker: 5 URLs/request
-    const PACE_MS = 1200; // stay under 60 URLs/min
+    // Rate limit is 60 URLs/min. At 5 URLs/chunk that's max 12 chunks/min,
+    // i.e. one chunk every 5s. Use 5.5s for a safety margin (~55 URLs/min).
+    const PACE_MS = 5500;
+    const MAX_429_RETRIES = 5; // on a 429, wait and retry the same chunk
+    const RATE_LIMIT_WAIT_MS = 65000; // ~1 min: lets the per-minute window reset
 
     setDaProgress({
       isProcessing: true,
@@ -1415,6 +1420,7 @@ export default function DomainsPage() {
       message: 'Reading the sheet…',
       results: [],
     });
+    setDaMinimized(false);
     setShowDaModal(true);
 
     // Step 1: get the work-list (rows that need DA/SS)
@@ -1455,66 +1461,83 @@ export default function DomainsPage() {
       if (daStopRef.current) break;
 
       const items = pending.slice(i, i + CHUNK);
-      try {
-        const res = await fetch('/api/domains/update-da-sheet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'chunk', items }),
-        });
-        const data = await res.json();
-        const chunkResults = data.success ? data.results || [] : [];
 
-        if (!data.success) {
-          // Whole chunk failed at the route level
-          items.forEach((it: { rowNumber: number; domain: string }) =>
-            chunkResults.push({ domain: it.domain, rowNumber: it.rowNumber, status: 'error', error: data.error })
-          );
+      // Fetch this chunk, retrying on rate-limit (429) so no rows are lost.
+      let chunkResults: any[] | null = null;
+      let rateLimited = false;
+      for (let attempt = 0; attempt <= MAX_429_RETRIES; attempt++) {
+        if (daStopRef.current) break;
+        try {
+          const res = await fetch('/api/domains/update-da-sheet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'chunk', items }),
+          });
+          const data = await res.json();
+          const results = data.success ? data.results || [] : [];
+
+          // Detect a rate-limit: route reports it per-row as a 429 error.
+          const isRateLimited =
+            (!data.success && /429|rate limit/i.test(data.error || '')) ||
+            results.some((r: any) => r.status === 'error' && /429|rate limit/i.test(r.error || ''));
+
+          if (isRateLimited && attempt < MAX_429_RETRIES) {
+            rateLimited = true;
+            const waitS = Math.round(RATE_LIMIT_WAIT_MS / 1000);
+            for (let s = waitS; s > 0 && !daStopRef.current; s--) {
+              setDaProgress((prev) =>
+                prev ? { ...prev, message: `Rate limit hit — waiting ${s}s for the per-minute window to reset…` } : prev
+              );
+              await new Promise((r) => setTimeout(r, 1000));
+            }
+            continue; // retry the same chunk
+          }
+
+          if (!data.success) {
+            // Non-rate-limit route error → mark the chunk's rows ERROR
+            items.forEach((it: { rowNumber: number; domain: string }) =>
+              results.push({ domain: it.domain, rowNumber: it.rowNumber, status: 'error', error: data.error })
+            );
+          }
+          chunkResults = results;
+          break;
+        } catch (error: any) {
+          // Network-level failure → mark the chunk's rows ERROR (no retry loop)
+          chunkResults = items.map((it: { rowNumber: number; domain: string }) => ({
+            domain: it.domain,
+            rowNumber: it.rowNumber,
+            status: 'error' as const,
+            error: error.message,
+          }));
+          break;
         }
-
-        chunkResults.forEach((r: any) => {
-          if (r.status === 'success') updated++;
-          else failed++;
-        });
-        processed += items.length;
-
-        setDaProgress((prev) =>
-          prev
-            ? {
-                ...prev,
-                processed,
-                updated,
-                failed,
-                message: `Processing… ${processed}/${pending.length}`,
-                results: [...chunkResults, ...prev.results], // newest on top
-              }
-            : prev
-        );
-      } catch (error: any) {
-        processed += items.length;
-        failed += items.length;
-        setDaProgress((prev) =>
-          prev
-            ? {
-                ...prev,
-                processed,
-                failed,
-                message: `Network error on a batch: ${error.message}`,
-                results: [
-                  ...items.map((it: { rowNumber: number; domain: string }) => ({
-                    domain: it.domain,
-                    rowNumber: it.rowNumber,
-                    status: 'error' as const,
-                    error: error.message,
-                  })),
-                  ...prev.results,
-                ],
-              }
-            : prev
-        );
       }
 
-      // Pace between chunks (skip after the last one)
-      if (i + CHUNK < pending.length && !daStopRef.current) {
+      if (daStopRef.current) break;
+      if (!chunkResults) continue; // stopped mid-retry
+
+      chunkResults.forEach((r: any) => {
+        if (r.status === 'success') updated++;
+        else failed++;
+      });
+      processed += items.length;
+
+      setDaProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              processed,
+              updated,
+              failed,
+              message: `Processing… ${processed}/${pending.length}`,
+              results: [...chunkResults, ...prev.results], // newest on top
+            }
+          : prev
+      );
+
+      // Pace between chunks to respect 60 URLs/min (skip after the last one).
+      // If we just waited out a rate limit, the window already reset — no extra pause.
+      if (i + CHUNK < pending.length && !daStopRef.current && !rateLimited) {
         await new Promise((r) => setTimeout(r, PACE_MS));
       }
     }
@@ -2438,7 +2461,7 @@ export default function DomainsPage() {
 
       {/* Traffic Fetch Modal */}
       {/* ── DA & Spam Score sheet-update modal ── */}
-      {showDaModal && daProgress && (
+      {showDaModal && daProgress && !daMinimized && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full h-[80vh] flex flex-col">
             <div className="flex-shrink-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -2448,17 +2471,28 @@ export default function DomainsPage() {
                   {daProgress.isProcessing ? 'Updating DA & Spam Score…' : 'DA & Spam Score Update'}
                 </h3>
               </div>
-              {!daProgress.isProcessing && (
+              <div className="flex items-center gap-2">
+                {/* Minimize: keep updating in the background */}
                 <button
-                  onClick={() => {
-                    setShowDaModal(false);
-                    setDaProgress(null);
-                  }}
-                  className="text-gray-400 hover:text-gray-600"
+                  onClick={() => setDaMinimized(true)}
+                  className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-gray-100 transition"
+                  title="Minimize and keep running in the background"
                 >
-                  <X className="w-5 h-5" />
+                  <Minimize2 className="w-4 h-4" />
+                  Minimize
                 </button>
-              )}
+                {!daProgress.isProcessing && (
+                  <button
+                    onClick={() => {
+                      setShowDaModal(false);
+                      setDaProgress(null);
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100">
@@ -2553,6 +2587,26 @@ export default function DomainsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Minimized DA-update pill — keeps running in the background */}
+      {showDaModal && daProgress && daMinimized && (
+        <button
+          onClick={() => setDaMinimized(false)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 hover:shadow-xl transition"
+          title="Restore DA & Spam Score window"
+        >
+          <RefreshCw className={`w-5 h-5 text-purple-600 ${daProgress.isProcessing ? 'animate-spin' : ''}`} />
+          <div className="text-left">
+            <div className="text-xs font-semibold text-gray-900">
+              {daProgress.isProcessing ? 'Updating DA & SS…' : 'DA update done'}
+            </div>
+            <div className="text-[11px] text-gray-500">
+              {daProgress.processed}/{daProgress.total} done · ✓ {daProgress.updated} · ✗ {daProgress.failed}
+            </div>
+          </div>
+          <Maximize2 className="w-4 h-4 text-gray-400" />
+        </button>
       )}
 
       {showTrafficModal && trafficProgress && (
