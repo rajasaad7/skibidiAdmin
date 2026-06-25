@@ -1,0 +1,11 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  # The admin app has many routes; the default Node heap (~2 GB) OOMs during
+  # Next.js type-checking on Netlify. Raise it for the build.
+  NODE_OPTIONS = "--max-old-space-size=4096"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
