@@ -35,12 +35,60 @@ interface User {
     li_fat_id?: string;
     ref?: string;
     referrer?: string;
+    // First-touch / last-touch attribution (organic + referral signups carry
+    // these even when there is no tagged utm_source, e.g. a claude.ai referral)
+    ft_utm_source?: string;
+    ft_referrer?: string;
+    ft_landing?: string;
+    ft_ts?: string;
+    lt_referrer?: string;
+    lt_landing?: string;
+    lt_ts?: string;
   } | null;
   contactDetails?: {
     type: string;
     value: string;
     updatedAt: string;
   } | null;
+}
+
+type UTMData = NonNullable<User['UTM']>;
+
+// Whether a user carries any meaningful attribution worth surfacing. Includes
+// referral / organic signups (ft_referrer, landing) - not just tagged campaigns
+// or paid-ad clicks - so a claude.ai referral (no utm_source) still shows.
+function hasAttribution(utm?: User['UTM']): boolean {
+  if (!utm) return false;
+  return Boolean(
+    utm.utm_source ||
+    utm.ft_utm_source ||
+    utm.utm_medium ||
+    utm.utm_campaign ||
+    utm.gclid ||
+    utm.gbraid ||
+    utm.wbraid ||
+    utm.fbclid ||
+    utm.ttclid ||
+    utm.twclid ||
+    utm.msclkid ||
+    utm.li_fat_id ||
+    utm.ref ||
+    utm.referrer ||
+    utm.ft_referrer ||
+    utm.lt_referrer ||
+    utm.ft_landing ||
+    utm.lt_landing
+  );
+}
+
+// Best-effort readable origin from a URL/host string (drops protocol + path).
+function prettyHost(value?: string): string {
+  if (!value) return '';
+  try {
+    return new URL(value).hostname.replace(/^www\./, '');
+  } catch {
+    return value.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  }
 }
 
 export default function UsersPage() {
@@ -403,65 +451,89 @@ export default function UsersPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="font-medium text-gray-900">{user.fullName.split(' ')[0]}</div>
-                          {user.UTM && (user.UTM.utm_source || user.UTM.gclid || user.UTM.fbclid || user.UTM.ttclid || user.UTM.twclid || user.UTM.msclkid || user.UTM.li_fat_id) && (
+                          {hasAttribution(user.UTM) && (
                             <div className="relative group">
                               <Info className="w-4 h-4 text-purple-500 cursor-help" />
                               <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 min-w-max">
                                 <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
-                                <div className="space-y-1">
-                                  <div className="font-semibold text-purple-300 border-b border-gray-700 pb-1 mb-1">Traffic Source</div>
-                                  {user.UTM.utm_source && (
-                                    <div><span className="text-gray-400">Source:</span> {user.UTM.utm_source}</div>
+                                <div className="space-y-1 max-w-xs whitespace-normal break-words">
+                                  {/* Referral / origin - present even when there is no tagged
+                                      campaign (organic + referral signups). */}
+                                  {(user.UTM!.ft_referrer || user.UTM!.lt_referrer || user.UTM!.ft_landing || user.UTM!.lt_landing || user.UTM!.ref) && (
+                                    <>
+                                      <div className="font-semibold text-emerald-300 border-b border-gray-700 pb-1 mb-1">Referral / Origin</div>
+                                      {(user.UTM!.ft_referrer || user.UTM!.referrer) && (
+                                        <div><span className="text-gray-400">Referrer:</span> {prettyHost(user.UTM!.ft_referrer || user.UTM!.referrer)}</div>
+                                      )}
+                                      {user.UTM!.lt_referrer && user.UTM!.lt_referrer !== user.UTM!.ft_referrer && (
+                                        <div><span className="text-gray-400">Last referrer:</span> {prettyHost(user.UTM!.lt_referrer)}</div>
+                                      )}
+                                      {user.UTM!.ref && (
+                                        <div><span className="text-gray-400">Ref:</span> {user.UTM!.ref}</div>
+                                      )}
+                                      {user.UTM!.ft_landing && (
+                                        <div><span className="text-gray-400">Landing:</span> {user.UTM!.ft_landing.replace(/^https?:\/\//, '').replace(/^www\./, '')}</div>
+                                      )}
+                                      {user.UTM!.ft_ts && (
+                                        <div><span className="text-gray-400">First touch:</span> {new Date(user.UTM!.ft_ts).toLocaleString()}</div>
+                                      )}
+                                    </>
                                   )}
-                                  {user.UTM.utm_medium && (
-                                    <div><span className="text-gray-400">Medium:</span> {user.UTM.utm_medium}</div>
+                                  {(user.UTM!.utm_source || user.UTM!.ft_utm_source || user.UTM!.utm_medium || user.UTM!.utm_campaign || user.UTM!.utm_term || user.UTM!.utm_content) && (
+                                    <div className="font-semibold text-purple-300 border-b border-gray-700 pb-1 mb-1 pt-1">Campaign</div>
                                   )}
-                                  {user.UTM.utm_campaign && (
-                                    <div><span className="text-gray-400">Campaign:</span> {user.UTM.utm_campaign}</div>
+                                  {(user.UTM!.utm_source || user.UTM!.ft_utm_source) && (
+                                    <div><span className="text-gray-400">Source:</span> {user.UTM!.utm_source || user.UTM!.ft_utm_source}</div>
                                   )}
-                                  {user.UTM.utm_term && (
-                                    <div><span className="text-gray-400">Term:</span> {user.UTM.utm_term}</div>
+                                  {user.UTM!.utm_medium && (
+                                    <div><span className="text-gray-400">Medium:</span> {user.UTM!.utm_medium}</div>
                                   )}
-                                  {user.UTM.utm_content && (
-                                    <div><span className="text-gray-400">Content:</span> {user.UTM.utm_content}</div>
+                                  {user.UTM!.utm_campaign && (
+                                    <div><span className="text-gray-400">Campaign:</span> {user.UTM!.utm_campaign}</div>
                                   )}
-                                  {(user.UTM.gclid || user.UTM.gbraid || user.UTM.wbraid) && (
+                                  {user.UTM!.utm_term && (
+                                    <div><span className="text-gray-400">Term:</span> {user.UTM!.utm_term}</div>
+                                  )}
+                                  {user.UTM!.utm_content && (
+                                    <div><span className="text-gray-400">Content:</span> {user.UTM!.utm_content}</div>
+                                  )}
+                                  {(user.UTM!.gclid || user.UTM!.gbraid || user.UTM!.wbraid) && (
                                     <div className="font-semibold text-blue-300 pt-1 mt-1">Google Ads</div>
                                   )}
-                                  {user.UTM.gclid && (
-                                    <div><span className="text-gray-400">GCLID:</span> {user.UTM.gclid.substring(0, 20)}...</div>
+                                  {user.UTM!.gclid && (
+                                    <div><span className="text-gray-400">GCLID:</span> {user.UTM!.gclid.substring(0, 20)}...</div>
                                   )}
-                                  {user.UTM.gad_campaignid && (
-                                    <div><span className="text-gray-400">Campaign ID:</span> {user.UTM.gad_campaignid}</div>
+                                  {user.UTM!.gad_campaignid && (
+                                    <div><span className="text-gray-400">Campaign ID:</span> {user.UTM!.gad_campaignid}</div>
                                   )}
-                                  {user.UTM.fbclid && (
+                                  {user.UTM!.fbclid && (
                                     <>
                                       <div className="font-semibold text-blue-400 border-t border-gray-700 pt-1 mt-1">Facebook Ads</div>
-                                      <div><span className="text-gray-400">FBCLID:</span> {user.UTM.fbclid.substring(0, 20)}...</div>
+                                      <div><span className="text-gray-400">FBCLID:</span> {user.UTM!.fbclid.substring(0, 20)}...</div>
                                     </>
                                   )}
-                                  {user.UTM.ttclid && (
+                                  {user.UTM!.ttclid && (
                                     <>
                                       <div className="font-semibold text-pink-300 border-t border-gray-700 pt-1 mt-1">TikTok Ads</div>
-                                      <div><span className="text-gray-400">TTCLID:</span> {user.UTM.ttclid.substring(0, 20)}...</div>
+                                      <div><span className="text-gray-400">TTCLID:</span> {user.UTM!.ttclid.substring(0, 20)}...</div>
                                     </>
                                   )}
-                                  {user.UTM.twclid && (
+                                  {user.UTM!.twclid && (
                                     <>
                                       <div className="font-semibold text-sky-300 border-t border-gray-700 pt-1 mt-1">Twitter Ads</div>
-                                      <div><span className="text-gray-400">TWCLID:</span> {user.UTM.twclid.substring(0, 20)}...</div>
+                                      <div><span className="text-gray-400">TWCLID:</span> {user.UTM!.twclid.substring(0, 20)}...</div>
                                     </>
                                   )}
-                                  {user.UTM.msclkid && (
+                                  {user.UTM!.msclkid && (
                                     <>
                                       <div className="font-semibold text-cyan-300 border-t border-gray-700 pt-1 mt-1">Microsoft Ads</div>
-                                      <div><span className="text-gray-400">MSCLKID:</span> {user.UTM.msclkid.substring(0, 20)}...</div>
+                                      <div><span className="text-gray-400">MSCLKID:</span> {user.UTM!.msclkid.substring(0, 20)}...</div>
                                     </>
                                   )}
-                                  {user.UTM.li_fat_id && (
+                                  {user.UTM!.li_fat_id && (
                                     <>
                                       <div className="font-semibold text-blue-300 border-t border-gray-700 pt-1 mt-1">LinkedIn Ads</div>
-                                      <div><span className="text-gray-400">LI_FAT_ID:</span> {user.UTM.li_fat_id.substring(0, 20)}...</div>
+                                      <div><span className="text-gray-400">LI_FAT_ID:</span> {user.UTM!.li_fat_id.substring(0, 20)}...</div>
                                     </>
                                   )}
                                 </div>

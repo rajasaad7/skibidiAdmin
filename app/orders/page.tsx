@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles } from 'lucide-react';
+import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface Order {
@@ -46,12 +46,22 @@ interface Order {
   revisionRequestedAt?: string;
   completedAt?: string;
   deadlineAt?: string;
+  // Article (content-writing) sub-flow timestamps
+  articleSubmittedAt?: string;
+  articleApprovedAt?: string;
+  articleRevisionRequestedAt?: string;
   // Remarks
   rejectionReason?: string;
   refundReason?: string;
   refundedAmount?: number;
   refundRequestedAt?: string;
   refundedAt?: string;
+  // Clarification (buyer/publisher Q&A) - denormalized on the order
+  clarificationStatus?: string;
+  clarificationCount?: number;
+  openClarificationId?: string;
+  lastClarificationAt?: string;
+  publisherUnseenAnswer?: boolean;
   // Verification
   manualVerified?: boolean;
   // How the order was placed: 'browse' | 'featured' | 'assistant'
@@ -76,6 +86,88 @@ interface ContactDetails {
   type: string;
   value: string;
   updatedAt: string;
+}
+
+interface ClarificationParty {
+  fullName: string;
+  email: string;
+}
+
+interface Clarification {
+  _id: string;
+  roundNumber: number;
+  status: string; // 'open' | 'answered'
+  question: string;
+  answer?: string | null;
+  statusBeforeFreeze?: string | null;
+  pausedMs?: number | null;
+  requirementChanges?: Record<string, unknown> | null;
+  askedAt?: string | null;
+  answeredAt?: string | null;
+  questionSeenAt?: string | null;
+  answerSeenAt?: string | null;
+  askedBy?: ClarificationParty | null;
+  answeredBy?: ClarificationParty | null;
+}
+
+// Admin-facing status labels. Kept in sync with the app's order state machine
+// (src/lib/orders/stateMachine.js). Admin uses the neutral, non-role label so a
+// status reads the same regardless of which side placed the order.
+const STATUS_LABELS: Record<string, string> = {
+  pending_payment: 'Pending Payment',
+  paid: 'Paid',
+  article_writing: 'Article Writing',
+  article_submitted: 'Article Submitted',
+  article_revision_requested: 'Article Revision Requested',
+  article_approved: 'Article Approved',
+  accepted: 'Accepted',
+  rejected: 'Rejected',
+  in_progress: 'In Progress',
+  submitted: 'Submitted',
+  revision_requested: 'Revision Requested',
+  clarification_requested: 'Clarification Requested',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  refund_requested: 'Refund Requested',
+  refunded: 'Refunded',
+  disputed: 'Disputed',
+};
+
+function statusLabel(status: string): string {
+  return (
+    STATUS_LABELS[status] ||
+    status.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  );
+}
+
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case 'completed':
+    case 'paid':
+      return 'bg-green-100 text-green-800';
+    case 'accepted':
+    case 'in_progress':
+    case 'article_approved':
+      return 'bg-blue-100 text-blue-800';
+    case 'submitted':
+    case 'article_submitted':
+      return 'bg-purple-100 text-purple-800';
+    case 'clarification_requested':
+      return 'bg-amber-100 text-amber-800';
+    case 'revision_requested':
+    case 'article_revision_requested':
+    case 'refund_requested':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'cancelled':
+    case 'rejected':
+      return 'bg-red-100 text-red-800';
+    case 'refunded':
+      return 'bg-gray-100 text-gray-800';
+    case 'disputed':
+      return 'bg-rose-100 text-rose-700';
+    default:
+      return 'bg-orange-100 text-orange-800';
+  }
 }
 
 export default function OrdersPage() {
@@ -145,6 +237,10 @@ export default function OrdersPage() {
 
   // Modal data loading (when opening a row's details)
   const [modalLoading, setModalLoading] = useState(false);
+
+  // Clarification (buyer/publisher Q&A) thread for the open order
+  const [clarifications, setClarifications] = useState<Clarification[]>([]);
+  const [clarificationsLoading, setClarificationsLoading] = useState(false);
 
   const fetchStats = async () => {
     try {
@@ -282,11 +378,32 @@ export default function OrdersPage() {
     setPublisherName('');
   };
 
+  const fetchClarifications = async (orderId: string) => {
+    setClarificationsLoading(true);
+    try {
+      const response = await fetch(`/api/orders/${orderId}/clarifications`);
+      const data = await response.json();
+      if (data.success) {
+        setClarifications(data.clarifications || []);
+      } else {
+        setClarifications([]);
+      }
+    } catch (error) {
+      console.error('Error loading clarifications:', error);
+      setClarifications([]);
+    } finally {
+      setClarificationsLoading(false);
+    }
+  };
+
   const openOrderModal = async (order: Order) => {
     // Show modal immediately with the lightweight row data so the user gets feedback,
     // then fetch full details in the background.
     setEditingOrder(order);
     setModalLoading(true);
+    setClarifications([]);
+    // The buyer/publisher Q&A thread loads in parallel with the order details.
+    fetchClarifications(order._id);
     try {
       const response = await fetch(`/api/orders/${order._id}`);
       const data = await response.json();
@@ -483,6 +600,7 @@ export default function OrdersPage() {
     setDomainName('');
     setBuyerName('');
     setPublisherName('');
+    setClarifications([]);
   };
 
   const handleDeleteOrder = async () => {
@@ -554,6 +672,7 @@ export default function OrdersPage() {
     { value: 'in_progress', label: 'In Progress' },
     { value: 'submitted', label: 'Submitted' },
     { value: 'revision_requested', label: 'Revision Requested' },
+    { value: 'clarification_requested', label: 'Clarification Requested' },
     { value: 'completed', label: 'Completed' },
     { value: 'cancelled', label: 'Cancelled' },
     { value: 'refund_requested', label: 'Refund Requested' },
@@ -667,16 +786,15 @@ export default function OrdersPage() {
                       {order.serviceType?.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        order.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        order.status === 'paid' || order.status === 'in_progress' || order.status === 'accepted' ? 'bg-blue-100 text-blue-800' :
-                        order.status === 'submitted' ? 'bg-purple-100 text-purple-800' :
-                        order.status === 'cancelled' || order.status === 'refunded' ? 'bg-red-100 text-red-800' :
-                        order.status === 'revision_requested' || order.status === 'refund_requested' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-orange-100 text-orange-800'
-                      }`}>
-                        {order.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(order.status)}`}>
+                        {statusLabel(order.status)}
                       </span>
+                      {order.status === 'clarification_requested' && (
+                        <span className="mt-1 flex items-center gap-1 text-[11px] text-amber-700">
+                          <HelpCircle className="w-3 h-3" />
+                          Delivery paused · awaiting buyer
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       ${order.totalPrice?.toFixed(2)}
@@ -783,6 +901,7 @@ export default function OrdersPage() {
                           const data = await response.json();
                           if (data.success && data.order) {
                             populateOrderForm(data.order);
+                            fetchClarifications(editingOrder._id);
                             toast.success('Order data refreshed!');
                           } else {
                             toast.error('Failed to refresh order data');
@@ -991,11 +1110,13 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* TAT (Turnaround Time) Status */}
+              {/* TAT (Turnaround Time) Status. Shown only for working statuses
+                  where the delivery clock is actually ticking. It is hidden
+                  while frozen for clarification (the DB deadline is stale then)
+                  and for terminal / pre-work statuses. */}
               {editingOrder.deadlineAt && !editingOrder.completedAt &&
-               editingOrder.status !== 'pending_payment' &&
-               editingOrder.status !== 'completed' &&
-               editingOrder.status !== 'refunded' && (() => {
+               ['paid', 'accepted', 'in_progress', 'article_writing', 'article_approved', 'revision_requested', 'submitted'].includes(editingOrder.status) &&
+               (() => {
                 const tatInfo = calculateTATRemaining(editingOrder);
                 if (!tatInfo) return null;
 
@@ -1351,6 +1472,114 @@ export default function OrdersPage() {
                 )}
               </div>
 
+              {/* Clarifications (buyer / publisher Q&A) */}
+              {(clarificationsLoading || clarifications.length > 0 || editingOrder.status === 'clarification_requested') && (
+                <div className="border border-amber-200 rounded-lg p-4 space-y-3 bg-amber-50/40">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                      <HelpCircle className="w-4 h-4 text-amber-600" />
+                      Clarifications
+                      {clarifications.length > 0 && (
+                        <span className="text-xs font-normal text-gray-500">
+                          ({clarifications.length} of {3} rounds used)
+                        </span>
+                      )}
+                    </h4>
+                    {editingOrder.status === 'clarification_requested' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">
+                        <Pause className="w-3 h-3" />
+                        Delivery clock paused
+                      </span>
+                    )}
+                  </div>
+
+                  {editingOrder.status === 'clarification_requested' && (
+                    <p className="text-xs text-amber-800">
+                      The publisher asked the buyer a question and the delivery clock is frozen. It resumes when the buyer answers. Admins do not answer on the buyer&apos;s behalf; use the contact button or change the status manually if you need to intervene.
+                    </p>
+                  )}
+
+                  {clarificationsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Loading conversation...
+                    </div>
+                  ) : clarifications.length === 0 ? (
+                    <p className="text-sm text-gray-500">No clarification rounds on this order.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {clarifications.map((round) => (
+                        <div
+                          key={round._id}
+                          className="rounded-lg border border-gray-200 bg-white p-3 space-y-2"
+                        >
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-xs font-semibold text-gray-700">
+                                {round.roundNumber}
+                              </span>
+                              <span className="text-xs font-medium text-gray-700">Round {round.roundNumber}</span>
+                              <span
+                                className={`inline-flex px-2 py-0.5 text-[11px] font-semibold rounded-full ${
+                                  round.status === 'open'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-green-100 text-green-800'
+                                }`}
+                              >
+                                {round.status === 'open' ? 'Awaiting answer' : 'Answered'}
+                              </span>
+                            </div>
+                            {round.statusBeforeFreeze && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                <Pause className="w-3 h-3" />
+                                Frozen from {statusLabel(round.statusBeforeFreeze)}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Question (asked by the publisher) */}
+                          <div className="rounded-md bg-blue-50 border border-blue-100 p-2.5">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-[11px] font-semibold text-blue-800">
+                                Publisher{round.askedBy ? ` · ${round.askedBy.fullName}` : ''} asked
+                              </span>
+                              {round.askedAt && (
+                                <span className="text-[11px] text-blue-600">
+                                  {new Date(round.askedAt).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{round.question}</p>
+                          </div>
+
+                          {/* Answer (given by the buyer) */}
+                          {round.answer ? (
+                            <div className="rounded-md bg-green-50 border border-green-100 p-2.5 ml-4">
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="text-[11px] font-semibold text-green-800">
+                                  Buyer{round.answeredBy ? ` · ${round.answeredBy.fullName}` : ''} replied
+                                </span>
+                                {round.answeredAt && (
+                                  <span className="text-[11px] text-green-600">
+                                    {new Date(round.answeredAt).toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{round.answer}</p>
+                            </div>
+                          ) : (
+                            <div className="ml-4 text-xs text-amber-700 flex items-center gap-1">
+                              <ArrowRight className="w-3 h-3" />
+                              Waiting for the buyer to reply
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Status Management */}
               <div className="border border-gray-200 rounded-lg p-4 space-y-3">
                 <h4 className="text-sm font-semibold text-gray-900 mb-2">Status Management</h4>
@@ -1413,38 +1642,41 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Timestamps */}
-              {(editingOrder.acceptedAt || editingOrder.rejectedAt || editingOrder.revisionRequestedAt || editingOrder.completedAt) && (
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-blue-900 mb-2">Timestamps</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    {editingOrder.acceptedAt && (
-                      <div>
-                        <span className="text-blue-800 font-medium">Accepted:</span>
-                        <span className="text-blue-700 ml-2">{new Date(editingOrder.acceptedAt).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {editingOrder.rejectedAt && (
-                      <div>
-                        <span className="text-blue-800 font-medium">Rejected:</span>
-                        <span className="text-blue-700 ml-2">{new Date(editingOrder.rejectedAt).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {editingOrder.revisionRequestedAt && (
-                      <div>
-                        <span className="text-blue-800 font-medium">Revision Requested:</span>
-                        <span className="text-blue-700 ml-2">{new Date(editingOrder.revisionRequestedAt).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {editingOrder.completedAt && (
-                      <div>
-                        <span className="text-blue-800 font-medium">Completed:</span>
-                        <span className="text-blue-700 ml-2">{new Date(editingOrder.completedAt).toLocaleString()}</span>
-                      </div>
-                    )}
+              {/* Timestamps - full order lifecycle, in chronological order.
+                  Only present values render. */}
+              {(() => {
+                const stamps: { label: string; value?: string }[] = [
+                  { label: 'Created', value: editingOrder.createdAt },
+                  { label: 'Paid', value: editingOrder.paidAt },
+                  { label: 'Article Submitted', value: editingOrder.articleSubmittedAt },
+                  { label: 'Article Revision Requested', value: editingOrder.articleRevisionRequestedAt },
+                  { label: 'Article Approved', value: editingOrder.articleApprovedAt },
+                  { label: 'Accepted', value: editingOrder.acceptedAt },
+                  { label: 'Last Clarification', value: editingOrder.lastClarificationAt },
+                  { label: 'Submitted', value: editingOrder.submittedAt },
+                  { label: 'Revision Requested', value: editingOrder.revisionRequestedAt },
+                  { label: 'Rejected', value: editingOrder.rejectedAt },
+                  { label: 'Refund Requested', value: editingOrder.refundRequestedAt },
+                  { label: 'Refunded', value: editingOrder.refundedAt },
+                  { label: 'Completed', value: editingOrder.completedAt },
+                ].filter((s) => s.value);
+
+                if (stamps.length === 0) return null;
+
+                return (
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-blue-900 mb-2">Timestamps</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {stamps.map((s) => (
+                        <div key={s.label}>
+                          <span className="text-blue-800 font-medium">{s.label}:</span>
+                          <span className="text-blue-700 ml-2">{new Date(s.value as string).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Previous Remarks */}
               {(editingOrder.rejectionReason || editingOrder.refundReason) && (
@@ -1517,7 +1749,7 @@ export default function OrdersPage() {
                 <div className="text-sm">
                   <div><span className="text-gray-500">Domain:</span> <span className="font-medium">{deletingOrder.domains?.domainName || 'N/A'}</span></div>
                   <div><span className="text-gray-500">Total:</span> <span className="font-medium">${deletingOrder.totalPrice?.toFixed(2)}</span></div>
-                  <div><span className="text-gray-500">Status:</span> <span className="font-medium">{deletingOrder.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</span></div>
+                  <div><span className="text-gray-500">Status:</span> <span className="font-medium">{statusLabel(deletingOrder.status)}</span></div>
                 </div>
               </div>
             </div>
