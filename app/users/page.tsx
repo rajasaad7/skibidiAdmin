@@ -454,9 +454,12 @@ export default function UsersPage() {
                           {hasAttribution(user.UTM) && (
                             <div className="relative group">
                               <Info className="w-4 h-4 text-purple-500 cursor-help" />
-                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 min-w-max">
-                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
-                                <div className="space-y-1 max-w-xs whitespace-normal break-words">
+                              {/* Anchored to the icon's left edge (not centered) so the tooltip
+                                  always opens rightward into available space and never clips on
+                                  the row's left boundary. */}
+                              <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 w-64">
+                                <div className="absolute bottom-full left-2 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
+                                <div className="space-y-1 whitespace-normal break-words">
                                   {/* Referral / origin - present even when there is no tagged
                                       campaign (organic + referral signups). */}
                                   {(user.UTM!.ft_referrer || user.UTM!.lt_referrer || user.UTM!.ft_landing || user.UTM!.lt_landing || user.UTM!.ref) && (
