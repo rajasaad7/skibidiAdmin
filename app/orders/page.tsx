@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight } from 'lucide-react';
+import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight, Copy } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface Order {
@@ -198,12 +198,8 @@ export default function OrdersPage() {
   const [contentWritingFee, setContentWritingFee] = useState<string>('');
   const [requestContentWriting, setRequestContentWriting] = useState<boolean>(false);
 
-  // Payment fields
-  const [paymentMethod, setPaymentMethod] = useState<string>('');
-  const [paymentStatus, setPaymentStatus] = useState<string>('');
-  const [paddleTransactionId, setPaddleTransactionId] = useState<string>('');
-  const [stripeTransactionId, setStripeTransactionId] = useState<string>('');
-  const [stripeSessionId, setStripeSessionId] = useState<string>('');
+  // Payment fields are read from the loaded order (editingOrder) and shown
+  // read-only; they are never edited here, so no local state is kept for them.
 
   // Buyer content fields
   const [articleTitle, setArticleTitle] = useState<string>('');
@@ -359,11 +355,6 @@ export default function OrdersPage() {
     setPublisherEarnings(order.publisherEarnings?.toString() || '');
     setContentWritingFee(order.contentWritingFee?.toString() || '');
     setRequestContentWriting(order.requestContentWriting || false);
-    setPaymentMethod(order.paymentMethod || '');
-    setPaymentStatus(order.paymentStatus || 'pending');
-    setPaddleTransactionId(order.paddleTransactionId || '');
-    setStripeTransactionId(order.stripeTransactionId || '');
-    setStripeSessionId(order.stripeSessionId || '');
     setArticleTitle(order.articleTitle || '');
     setArticleContent(order.articleContent || '');
     setSpecialRequirements(order.specialRequirements || '');
@@ -446,12 +437,8 @@ export default function OrdersPage() {
       if (contentWritingFee !== (editingOrder.contentWritingFee?.toString() || '')) payload.contentWritingFee = contentWritingFee ? parseFloat(contentWritingFee) : null;
       if (requestContentWriting !== editingOrder.requestContentWriting) payload.requestContentWriting = requestContentWriting;
 
-      // Payment fields
-      if (paymentMethod !== (editingOrder.paymentMethod || '')) payload.paymentMethod = paymentMethod;
-      if (paymentStatus !== (editingOrder.paymentStatus || '')) payload.paymentStatus = paymentStatus;
-      if (paddleTransactionId !== (editingOrder.paddleTransactionId || '')) payload.paddleTransactionId = paddleTransactionId;
-      if (stripeTransactionId !== (editingOrder.stripeTransactionId || '')) payload.stripeTransactionId = stripeTransactionId;
-      if (stripeSessionId !== (editingOrder.stripeSessionId || '')) payload.stripeSessionId = stripeSessionId;
+      // Payment fields are display-only (set by the payment providers) and are
+      // intentionally never included in the update payload.
 
       // Buyer content fields
       if (articleTitle !== (editingOrder.articleTitle || '')) payload.articleTitle = articleTitle;
@@ -583,11 +570,6 @@ export default function OrdersPage() {
     setPublisherEarnings('');
     setContentWritingFee('');
     setRequestContentWriting(false);
-    setPaymentMethod('');
-    setPaymentStatus('');
-    setPaddleTransactionId('');
-    setStripeTransactionId('');
-    setStripeSessionId('');
     setArticleTitle('');
     setArticleContent('');
     setSpecialRequirements('');
@@ -1268,119 +1250,101 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Payment Information */}
-              <div className="border border-gray-200 rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-semibold text-gray-900 mb-2">Payment Information</h4>
+              {/* Payment Information (read-only - set by the payment providers, never edited here) */}
+              {(() => {
+                const method = editingOrder?.paymentMethod || '';
+                const methodLabels: Record<string, string> = {
+                  stripe: 'Stripe',
+                  coinpayments: 'CoinPayments',
+                  paypal: 'PayPal',
+                  balance: 'Balance',
+                  manual: 'Manual',
+                  // Legacy provider (decommissioned); shown neutrally so old orders
+                  // still render an identifiable method without surfacing the name.
+                  paddle: 'Card (legacy)',
+                };
+                const methodLabel = methodLabels[method] || (method ? method : 'Not set');
 
-                <div className="grid grid-cols-2 gap-3">
+                const statusLabels: Record<string, string> = {
+                  pending: 'Pending',
+                  completed: 'Completed',
+                  failed: 'Failed',
+                  refunded: 'Refunded',
+                };
+                const status = editingOrder?.paymentStatus || '';
+                const statusLabel = statusLabels[status] || (status ? status : 'Pending');
+
+                // Only the transaction reference that matches the actual method.
+                let txnLabel: string | null = null;
+                let txnValue: string | null = null;
+                if (method === 'coinpayments' && editingOrder?.coinpaymentsTransactionId) {
+                  txnLabel = 'CoinPayments Invoice / Transaction ID';
+                  txnValue = editingOrder.coinpaymentsTransactionId;
+                } else if (method === 'stripe' && editingOrder?.stripeTransactionId) {
+                  txnLabel = 'Stripe Transaction ID';
+                  txnValue = editingOrder.stripeTransactionId;
+                } else if (method === 'paddle' && editingOrder?.paddleTransactionId) {
+                  txnLabel = 'Transaction ID';
+                  txnValue = editingOrder.paddleTransactionId;
+                }
+
+                const showBalanceUsed =
+                  editingOrder?.balanceUsed != null && Number(editingOrder.balanceUsed) > 0;
+
+                const ReadOnlyValue = ({
+                  label,
+                  value,
+                  copyable = false,
+                }: {
+                  label: string;
+                  value: string;
+                  copyable?: boolean;
+                }) => (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Payment Method
-                    </label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
-                      disabled={!isEditMode}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                    >
-                      <option value="">Not set</option>
-                      <option value="stripe">Stripe</option>
-                      <option value="coinpayments">CoinPayments</option>
-                      <option value="paypal">PayPal</option>
-                      <option value="balance">Balance</option>
-                      <option value="manual">Manual</option>
-                      <option value="paddle">Paddle (legacy)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Payment Status
-                    </label>
-                    <select
-                      value={paymentStatus}
-                      onChange={(e) => setPaymentStatus(e.target.value)}
-                      disabled={!isEditMode}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="completed">Completed</option>
-                      <option value="failed">Failed</option>
-                      <option value="refunded">Refunded</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Paddle Transaction ID
-                    </label>
-                    <input
-                      type="text"
-                      value={paddleTransactionId}
-                      onChange={(e) => setPaddleTransactionId(e.target.value)}
-                      placeholder="txn_..."
-                      readOnly={!isEditMode}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Stripe Transaction ID
-                    </label>
-                    <input
-                      type="text"
-                      value={stripeTransactionId}
-                      onChange={(e) => setStripeTransactionId(e.target.value)}
-                      placeholder="pi_..."
-                      readOnly={!isEditMode}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Stripe Session ID
-                    </label>
-                    <input
-                      type="text"
-                      value={stripeSessionId}
-                      onChange={(e) => setStripeSessionId(e.target.value)}
-                      placeholder="cs_..."
-                      readOnly={!isEditMode}
-                      className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                    />
-                  </div>
-
-                  {editingOrder?.coinpaymentsTransactionId && (
-                    <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        CoinPayments Invoice / Transaction ID
-                      </label>
-                      <input
-                        type="text"
-                        value={editingOrder.coinpaymentsTransactionId}
-                        readOnly
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-                      />
+                    <div className="text-xs font-medium text-gray-500 mb-1">{label}</div>
+                    <div className="flex items-stretch gap-2">
+                      <div className="flex-1 px-3 py-2 text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-lg break-all">
+                        {value}
+                      </div>
+                      {copyable && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(value);
+                            toast.success('Copied to clipboard!');
+                          }}
+                          title="Copy ID"
+                          aria-label="Copy ID"
+                          className="flex-shrink-0 px-3 flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
+                );
 
-                  {editingOrder?.balanceUsed != null && Number(editingOrder.balanceUsed) > 0 && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Balance Used
-                      </label>
-                      <input
-                        type="text"
-                        value={`$${Number(editingOrder.balanceUsed).toFixed(2)}`}
-                        readOnly
-                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-                      />
+                return (
+                  <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Payment Information</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <ReadOnlyValue label="Payment Method" value={methodLabel} />
+                      <ReadOnlyValue label="Payment Status" value={statusLabel} />
+                      {txnLabel && txnValue && (
+                        <div className="col-span-2">
+                          <ReadOnlyValue label={txnLabel} value={txnValue} copyable />
+                        </div>
+                      )}
+                      {showBalanceUsed && (
+                        <ReadOnlyValue
+                          label="Balance Used"
+                          value={`$${Number(editingOrder!.balanceUsed).toFixed(2)}`}
+                        />
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
 
               {/* Buyer Submitted Content */}
               <div className="border border-gray-200 rounded-lg p-4 space-y-3">
