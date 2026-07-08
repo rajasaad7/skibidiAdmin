@@ -25,6 +25,8 @@ interface Order {
   paddleTransactionId?: string;
   stripeTransactionId?: string;
   stripeSessionId?: string;
+  coinpaymentsTransactionId?: string;
+  balanceUsed?: number;
   paidAt?: string;
   // Dates
   createdAt: string;
@@ -357,7 +359,7 @@ export default function OrdersPage() {
     setPublisherEarnings(order.publisherEarnings?.toString() || '');
     setContentWritingFee(order.contentWritingFee?.toString() || '');
     setRequestContentWriting(order.requestContentWriting || false);
-    setPaymentMethod(order.paymentMethod || 'paddle');
+    setPaymentMethod(order.paymentMethod || '');
     setPaymentStatus(order.paymentStatus || 'pending');
     setPaddleTransactionId(order.paddleTransactionId || '');
     setStripeTransactionId(order.stripeTransactionId || '');
@@ -1281,9 +1283,13 @@ export default function OrdersPage() {
                       disabled={!isEditMode}
                       className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     >
-                      <option value="paddle">Paddle</option>
+                      <option value="">Not set</option>
                       <option value="stripe">Stripe</option>
+                      <option value="coinpayments">CoinPayments</option>
+                      <option value="paypal">PayPal</option>
+                      <option value="balance">Balance</option>
                       <option value="manual">Manual</option>
+                      <option value="paddle">Paddle (legacy)</option>
                     </select>
                   </div>
 
@@ -1345,6 +1351,34 @@ export default function OrdersPage() {
                       className={`w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${!isEditMode ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     />
                   </div>
+
+                  {editingOrder?.coinpaymentsTransactionId && (
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        CoinPayments Invoice / Transaction ID
+                      </label>
+                      <input
+                        type="text"
+                        value={editingOrder.coinpaymentsTransactionId}
+                        readOnly
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
+                      />
+                    </div>
+                  )}
+
+                  {editingOrder?.balanceUsed != null && Number(editingOrder.balanceUsed) > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Balance Used
+                      </label>
+                      <input
+                        type="text"
+                        value={`$${Number(editingOrder.balanceUsed).toFixed(2)}`}
+                        readOnly
+                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
