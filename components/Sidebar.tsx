@@ -63,7 +63,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
     { href: '/press-releases', icon: FileText, label: 'Press Releases', roles: ['super_admin', 'colleague'] },
     { href: '/domains', icon: Globe, label: 'Domains', roles: ['super_admin', 'colleague'] },
     { href: '/orders', icon: ShoppingCart, label: 'Orders', roles: ['super_admin'] },
-    { href: '/marketplace-pro', icon: Crown, label: 'Marketplace Pro', roles: ['super_admin'] },
+    { href: '/marketplace-pro', icon: Crown, label: 'Paid Plans', roles: ['super_admin'] },
     { href: '/payouts', icon: DollarSign, label: 'Payouts', roles: ['super_admin'] },
     { href: '/kyc-check', icon: BadgeCheck, label: 'KYC Check', roles: ['super_admin'] },
     { href: '/balance', icon: Wallet, label: 'Balance', roles: ['super_admin'] },

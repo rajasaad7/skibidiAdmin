@@ -290,10 +290,10 @@ export default function MarketplaceProPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
-            <Crown className="w-6 h-6 text-amber-500" /> Marketplace Pro
+            <Crown className="w-6 h-6 text-amber-500" /> Paid Plans
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Manage Pro subscriptions: grants, revokes, Dodo resyncs and unlock abuse signals.
+            Marketplace Pro subscriptions and monitoring plan grants: grant, revoke, Dodo resyncs and unlock abuse signals.
           </p>
         </div>
         <div className="flex gap-2">

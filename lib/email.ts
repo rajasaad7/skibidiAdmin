@@ -129,6 +129,8 @@ function buildLwGrantEmailShell({
   features,
   ctaLabel,
   url,
+  tagline = 'Your Link Building Marketplace',
+  footerLabel = 'LinkWatcher Marketplace',
 }: {
   badge: string;
   badgeColor: string;
@@ -137,6 +139,8 @@ function buildLwGrantEmailShell({
   features: string[];
   ctaLabel: string;
   url: string;
+  tagline?: string;
+  footerLabel?: string;
 }) {
   const appUrl = 'https://app.linkwatcher.io';
   return `<!DOCTYPE html>
@@ -173,7 +177,7 @@ function buildLwGrantEmailShell({
                 <div class="logo-container">
                     <img src="${LW_PRO_EMAIL_LOGO}" alt="LinkWatcher" class="logo">
                 </div>
-                <div class="tagline">Your Link Building Marketplace</div>
+                <div class="tagline">${tagline}</div>
                 <div class="welcome-badge" style="background:${badgeColor}">${badge}</div>
             </div>
             <div class="content">
@@ -183,7 +187,7 @@ function buildLwGrantEmailShell({
                 <div class="cta-section"><a href="${url}" class="cta-button">${ctaLabel}</a></div>
             </div>
             <div class="footer">
-                LinkWatcher Marketplace &middot; <a href="${appUrl}/marketplace" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
+                ${footerLabel} &middot; <a href="${appUrl}" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
             </div>
         </div>
     </div>
@@ -215,13 +219,17 @@ export function formatProGrantedEmail(data: {
   });
 }
 
-// Admin-granted monitoring plan notification (same shell, monitoring copy).
+// Admin-granted monitoring plan notification: same shell, but MONITORING
+// branding (tagline + footer), not marketplace, since this is about the
+// backlink monitoring product.
 export function formatPlanGrantedEmail(data: {
   fullName?: string | null;
   planName: string;
   untilText: string;
 }) {
   return buildLwGrantEmailShell({
+    tagline: 'Backlink & Keyword Rank Monitoring',
+    footerLabel: 'LinkWatcher',
     badge: 'Plan Access Granted',
     badgeColor: '#16a34a',
     greeting: `Hi ${data.fullName?.trim() || 'there'},`,

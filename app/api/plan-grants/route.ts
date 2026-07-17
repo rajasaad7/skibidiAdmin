@@ -201,7 +201,9 @@ export async function POST(request: NextRequest) {
           planName: plan.displayName,
           untilText,
         }),
-        senderName: 'Linkwatcher Marketplace',
+        // Monitoring-product email: plain Linkwatcher sender name. The address
+        // stays marketplace@ (verified sender that reliably lands in the inbox).
+        senderName: 'Linkwatcher',
         senderEmail: 'marketplace@linkwatcher.io',
       }).catch((e) => {
         console.error('Plan granted email failed:', e);
