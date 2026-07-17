@@ -99,8 +99,10 @@ export async function POST(request: NextRequest) {
         to: [{ email: user.email, ...(user.fullName ? { name: user.fullName } : {}) }],
         subject: 'You have been granted Marketplace Pro',
         htmlContent: formatProGrantedEmail({ fullName: user.fullName, untilText }),
-        senderName: 'Linkwatcher',
-        senderEmail: 'no-reply@linkwatcher.io',
+        // marketplace@ instead of no-reply@: no-reply senders skew Gmail toward
+        // the Promotions tab, and this is an account notice the user must see.
+        senderName: 'Linkwatcher Marketplace',
+        senderEmail: 'marketplace@linkwatcher.io',
       }).catch((e) => {
         console.error('Pro granted email failed:', e);
         return { success: false as const };
