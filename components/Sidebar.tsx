@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase, Shield, Flag, Wallet, BadgeCheck, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase, Shield, Flag, Wallet, BadgeCheck, TrendingUp, Crown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -63,6 +63,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
     { href: '/press-releases', icon: FileText, label: 'Press Releases', roles: ['super_admin', 'colleague'] },
     { href: '/domains', icon: Globe, label: 'Domains', roles: ['super_admin', 'colleague'] },
     { href: '/orders', icon: ShoppingCart, label: 'Orders', roles: ['super_admin'] },
+    { href: '/marketplace-pro', icon: Crown, label: 'Marketplace Pro', roles: ['super_admin'] },
     { href: '/payouts', icon: DollarSign, label: 'Payouts', roles: ['super_admin'] },
     { href: '/kyc-check', icon: BadgeCheck, label: 'KYC Check', roles: ['super_admin'] },
     { href: '/balance', icon: Wallet, label: 'Balance', roles: ['super_admin'] },
