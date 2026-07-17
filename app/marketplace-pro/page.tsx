@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Crown, RefreshCw, Search, Plus, X, ShieldAlert, Ban, ScrollText,
-  RotateCw, ExternalLink, ChevronDown,
+  RotateCw, ExternalLink, ChevronDown, TrendingUp,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -92,6 +92,51 @@ export default function MarketplaceProPage() {
   const [showGrant, setShowGrant] = useState(false);
   const [grantForm, setGrantForm] = useState({ userId: '', source: 'promo', until: '' });
   const [granting, setGranting] = useState(false);
+
+  // Monitoring plan grant modal (same flow, but grants a monitoring PLAN to the
+  // user's owned org via /api/plan-grants; auto-reverts to Free after the date)
+  const [showPlanGrant, setShowPlanGrant] = useState(false);
+  const [planGrantForm, setPlanGrantForm] = useState({ userId: '', planPaddleId: '', until: '' });
+  const [planGranting, setPlanGranting] = useState(false);
+  const [planOptions, setPlanOptions] = useState<{ paddleId: string; displayName: string; price: number; type: string }[]>([]);
+
+  const openPlanGrant = async () => {
+    setShowPlanGrant(true);
+    if (!planOptions.length) {
+      try {
+        const res = await fetch('/api/plan-grants');
+        const json = await res.json();
+        if (res.ok && Array.isArray(json.plans)) setPlanOptions(json.plans);
+      } catch {
+        // The select shows a loading placeholder; submit will surface errors
+      }
+    }
+  };
+
+  const submitPlanGrant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPlanGranting(true);
+    try {
+      const res = await fetch('/api/plan-grants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(planGrantForm),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        const who = json.userEmail ? `${json.planName} granted to ${json.userEmail}` : 'Plan granted';
+        toast.success(json.emailSent ? `${who} · notification email sent` : `${who} · email NOT sent`);
+        setShowPlanGrant(false);
+        setPlanGrantForm({ userId: '', planPaddleId: '', until: '' });
+      } else {
+        toast.error(json.error || 'Plan grant failed');
+      }
+    } catch {
+      toast.error('Plan grant failed');
+    } finally {
+      setPlanGranting(false);
+    }
+  };
 
   // Revoke modal
   const [revokeTarget, setRevokeTarget] = useState<ProSubscription | null>(null);
@@ -257,6 +302,12 @@ export default function MarketplaceProPage() {
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+          </button>
+          <button
+            onClick={openPlanGrant}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <TrendingUp className="w-4 h-4" /> Grant Plan
           </button>
           <button
             onClick={() => setShowGrant(true)}
@@ -501,6 +552,77 @@ export default function MarketplaceProPage() {
                 className="w-full bg-amber-500 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-60"
               >
                 {granting ? 'Granting...' : 'Grant Pro'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Monitoring plan grant modal */}
+      {showPlanGrant && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowPlanGrant(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-600" /> Grant Monitoring Plan
+              </h2>
+              <button onClick={() => setShowPlanGrant(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={submitPlanGrant} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">User email or ID</label>
+                <input
+                  value={planGrantForm.userId}
+                  onChange={(e) => setPlanGrantForm({ ...planGrantForm, userId: e.target.value })}
+                  required
+                  className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="user@example.com or users._id"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Plan</label>
+                <div className="relative">
+                  <select
+                    value={planGrantForm.planPaddleId}
+                    onChange={(e) => setPlanGrantForm({ ...planGrantForm, planPaddleId: e.target.value })}
+                    required
+                    className="appearance-none w-full pl-3.5 pr-9 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer"
+                  >
+                    <option value="" disabled>{planOptions.length ? 'Choose a plan' : 'Loading plans...'}</option>
+                    {planOptions.map((p) => (
+                      <option key={p.paddleId} value={p.paddleId}>
+                        {p.displayName} · ${p.price}/{p.type === 'monthly' ? 'mo' : 'yr'}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Until</label>
+                <input
+                  type="date"
+                  value={planGrantForm.until}
+                  onChange={(e) => setPlanGrantForm({ ...planGrantForm, until: e.target.value })}
+                  required
+                  className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <p className="text-[11px] text-gray-400">
+                The user&apos;s workspace runs on this plan through the chosen day (UTC), then automatically
+                returns to Free. Marketplace Pro is included while it is active. The user gets a
+                notification email, and users with a live paid subscription cannot be granted over.
+              </p>
+
+              <button
+                type="submit"
+                disabled={planGranting}
+                className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+              >
+                {planGranting ? 'Granting...' : 'Grant Plan'}
               </button>
             </form>
           </div>

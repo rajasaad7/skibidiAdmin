@@ -121,27 +121,24 @@ export async function sendTrueEmailer(opts: {
 const LW_PRO_EMAIL_LOGO =
   'https://img.mailinblue.com/8364214/images/content_library/original/687cd3b91dbf968695678ada.png';
 
-export function formatProGrantedEmail(data: {
-  fullName?: string | null;
-  untilText: string;
+function buildLwGrantEmailShell({
+  badge,
+  badgeColor,
+  greeting,
+  bodyLines,
+  features,
+  ctaLabel,
+  url,
+}: {
+  badge: string;
+  badgeColor: string;
+  greeting: string;
+  bodyLines: string[];
+  features: string[];
+  ctaLabel: string;
+  url: string;
 }) {
   const appUrl = 'https://app.linkwatcher.io';
-  const greeting = `Hi ${data.fullName?.trim() || 'there'},`;
-  const bodyLines = [
-    `Good news: our team has granted your account complimentary Marketplace Pro access, active through <strong>${data.untilText}</strong>.`,
-    'Until then you have everything Pro includes:',
-  ];
-  const features = [
-    'See every domain name and URL in the marketplace',
-    'Search listings by domain name and URL',
-    'Post buyer requests and receive publisher offers',
-    'Unlimited Pluto conversations',
-    'Reveal domains instantly, no weekly unlock limit',
-  ];
-  const badge = 'Pro Access Granted';
-  const badgeColor = '#16a34a';
-  const ctaLabel = 'Browse the marketplace';
-  const url = `${appUrl}/marketplace`;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -192,6 +189,56 @@ export function formatProGrantedEmail(data: {
     </div>
 </body>
 </html>`;
+}
+
+export function formatProGrantedEmail(data: {
+  fullName?: string | null;
+  untilText: string;
+}) {
+  return buildLwGrantEmailShell({
+    badge: 'Pro Access Granted',
+    badgeColor: '#16a34a',
+    greeting: `Hi ${data.fullName?.trim() || 'there'},`,
+    bodyLines: [
+      `Good news: our team has granted your account complimentary Marketplace Pro access, active through <strong>${data.untilText}</strong>.`,
+      'Until then you have everything Pro includes:',
+    ],
+    features: [
+      'See every domain name and URL in the marketplace',
+      'Search listings by domain name and URL',
+      'Post buyer requests and receive publisher offers',
+      'Unlimited Pluto conversations',
+      'Reveal domains instantly, no weekly unlock limit',
+    ],
+    ctaLabel: 'Browse the marketplace',
+    url: 'https://app.linkwatcher.io/marketplace',
+  });
+}
+
+// Admin-granted monitoring plan notification (same shell, monitoring copy).
+export function formatPlanGrantedEmail(data: {
+  fullName?: string | null;
+  planName: string;
+  untilText: string;
+}) {
+  return buildLwGrantEmailShell({
+    badge: 'Plan Access Granted',
+    badgeColor: '#16a34a',
+    greeting: `Hi ${data.fullName?.trim() || 'there'},`,
+    bodyLines: [
+      `Good news: our team has granted your workspace the <strong>${data.planName}</strong> monitoring plan, active through <strong>${data.untilText}</strong>.`,
+      'Until then you have everything the plan includes:',
+    ],
+    features: [
+      'Backlink monitoring with automatic checks twice a day',
+      'Keyword rank tracking',
+      'Advanced analytics, reports and alerts',
+      'Higher link, keyword and project limits',
+      'Marketplace Pro included at no extra cost',
+    ],
+    ctaLabel: 'Open your dashboard',
+    url: 'https://app.linkwatcher.io/dashboard',
+  });
 }
 
 /**
