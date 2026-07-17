@@ -12,7 +12,9 @@ async function requireSuperAdmin() {
 }
 
 // POST: grant Marketplace Pro to a user via the admin_grant_marketplace_pro
-// RPC. Body: { userId, source: 'promo' | 'admin', until: ISO date }.
+// RPC. Body: { userId, source: 'promo' | 'admin', until: ISO date }, where
+// userId accepts either a users._id or the user's email (anything containing
+// "@" is treated as an email and resolved to the id here).
 // The grantedBy audit field always comes from the admin session cookie.
 export async function POST(request: NextRequest) {
   if (!(await requireSuperAdmin())) {
@@ -21,12 +23,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+    const userInput = typeof body.userId === 'string' ? body.userId.trim() : '';
     const source = typeof body.source === 'string' ? body.source.trim() : '';
     let until = typeof body.until === 'string' ? body.until.trim() : '';
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+    if (!userInput) {
+      return NextResponse.json({ error: 'User email or id is required' }, { status: 400 });
     }
     if (source !== 'promo' && source !== 'admin') {
       return NextResponse.json({ error: 'source must be promo or admin' }, { status: 400 });
@@ -47,21 +49,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'until must be in the future' }, { status: 400 });
     }
 
-    // Friendly error when the user id does not exist.
-    const { data: user, error: userErr } = await supabase
-      .from('users')
-      .select('_id, email')
-      .eq('_id', userId)
-      .maybeSingle();
+    // Resolve the target user: an "@" means email (case-insensitive exact
+    // match), anything else is treated as a users._id. Friendly errors either way.
+    const byEmail = userInput.includes('@');
+    let query = supabase.from('users').select('_id, email');
+    query = byEmail ? query.ilike('email', userInput) : query.eq('_id', userInput);
+    const { data: matches, error: userErr } = await query.limit(2);
     if (userErr) {
       return NextResponse.json({ error: userErr.message }, { status: 500 });
     }
-    if (!user) {
-      return NextResponse.json({ error: 'No user found with that id' }, { status: 404 });
+    if (!matches || matches.length === 0) {
+      return NextResponse.json(
+        { error: byEmail ? 'No user found with that email' : 'No user found with that id' },
+        { status: 404 }
+      );
     }
+    if (matches.length > 1) {
+      return NextResponse.json(
+        { error: 'Multiple users match that email; grant by user id instead' },
+        { status: 400 }
+      );
+    }
+    const user = matches[0];
 
     const { data, error } = await supabase.rpc('admin_grant_marketplace_pro', {
-      p_user_id: userId,
+      p_user_id: user._id,
       p_source: source,
       p_until: untilDate.toISOString(),
       p_granted_by: await getAdminEmail(),
@@ -77,7 +89,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result?.error || 'Grant failed' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, subscriptionId: result.subscriptionId });
+    return NextResponse.json({ success: true, subscriptionId: result.subscriptionId, userEmail: user.email });
   } catch (e) {
     console.error('Marketplace Pro grant error:', e);
     return NextResponse.json({ error: 'Failed to grant Pro' }, { status: 500 });

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Crown, RefreshCw, Search, Plus, X, ShieldAlert, Ban, ScrollText,
-  RotateCw, ExternalLink,
+  RotateCw, ExternalLink, ChevronDown,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -143,7 +143,7 @@ export default function MarketplaceProPage() {
       });
       const json = await res.json();
       if (res.ok) {
-        toast.success('Pro granted');
+        toast.success(json.userEmail ? `Pro granted to ${json.userEmail}` : 'Pro granted');
         setShowGrant(false);
         setGrantForm({ userId: '', source: 'promo', until: '' });
         fetchSubscriptions();
@@ -322,16 +322,19 @@ export default function MarketplaceProPage() {
           </button>
         </form>
 
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 outline-none"
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="appearance-none pl-3 pr-9 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer"
+          >
+            <option value="">All statuses</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        </div>
       </div>
 
       {tab === 'abuse' && (
@@ -452,26 +455,29 @@ export default function MarketplaceProPage() {
 
             <form onSubmit={submitGrant} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">User ID</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">User email or ID</label>
                 <input
                   value={grantForm.userId}
                   onChange={(e) => setGrantForm({ ...grantForm, userId: e.target.value })}
                   required
-                  className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none font-mono"
-                  placeholder="users._id (copy from the Users page)"
+                  className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                  placeholder="user@example.com or users._id"
                 />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Source</label>
-                  <select
-                    value={grantForm.source}
-                    onChange={(e) => setGrantForm({ ...grantForm, source: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white"
-                  >
-                    <option value="promo">promo</option>
-                    <option value="admin">admin</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={grantForm.source}
+                      onChange={(e) => setGrantForm({ ...grantForm, source: e.target.value })}
+                      className="appearance-none w-full pl-3.5 pr-9 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white cursor-pointer"
+                    >
+                      <option value="promo">promo</option>
+                      <option value="admin">admin</option>
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs font-medium text-gray-700 mb-1.5">Until</label>
