@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { checkAuth, getUserRole, getAdminEmail } from '@/lib/auth';
+import { sendTrueEmailer, formatProGrantedEmail } from '@/lib/email';
 
 // The middleware exempts all /api/* routes, so every handler here MUST
 // re-check auth explicitly. Never rely on the middleware.
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     // Resolve the target user: an "@" means email (case-insensitive exact
     // match), anything else is treated as a users._id. Friendly errors either way.
     const byEmail = userInput.includes('@');
-    let query = supabase.from('users').select('_id, email');
+    let query = supabase.from('users').select('_id, email, fullName');
     query = byEmail ? query.ilike('email', userInput) : query.eq('_id', userInput);
     const { data: matches, error: userErr } = await query.limit(2);
     if (userErr) {
@@ -89,7 +90,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: result?.error || 'Grant failed' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, subscriptionId: result.subscriptionId, userEmail: user.email });
+    // Notify the user, best effort: a failed email must never fail the grant.
+    // Same template + sender identity as the app's Pro lifecycle emails.
+    let emailSent = false;
+    if (user.email) {
+      const untilText = untilDate.toLocaleDateString('en-US', { dateStyle: 'long', timeZone: 'UTC' });
+      const emailRes = await sendTrueEmailer({
+        to: [{ email: user.email, ...(user.fullName ? { name: user.fullName } : {}) }],
+        subject: 'You have been granted Marketplace Pro',
+        htmlContent: formatProGrantedEmail({ fullName: user.fullName, untilText }),
+        senderName: 'Linkwatcher',
+        senderEmail: 'no-reply@linkwatcher.io',
+      }).catch((e) => {
+        console.error('Pro granted email failed:', e);
+        return { success: false as const };
+      });
+      emailSent = emailRes?.success === true;
+    }
+
+    return NextResponse.json({ success: true, subscriptionId: result.subscriptionId, userEmail: user.email, emailSent });
   } catch (e) {
     console.error('Marketplace Pro grant error:', e);
     return NextResponse.json({ error: 'Failed to grant Pro' }, { status: 500 });

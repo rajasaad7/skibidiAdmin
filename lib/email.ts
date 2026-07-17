@@ -112,6 +112,89 @@ export async function sendTrueEmailer(opts: {
 }
 
 /**
+ * Marketplace Pro grant notification. EXACT port of the app's buildProEmailHtml
+ * shell (src/lib/emailHelper.js) so admin-granted Pro emails look identical to
+ * the app's Pro lifecycle emails (same logo, header gradient, badge, features
+ * list, CTA, footer). Send it via sendTrueEmailer with senderName 'Linkwatcher'
+ * and senderEmail 'no-reply@linkwatcher.io' to match the app's sender identity.
+ */
+const LW_PRO_EMAIL_LOGO =
+  'https://img.mailinblue.com/8364214/images/content_library/original/687cd3b91dbf968695678ada.png';
+
+export function formatProGrantedEmail(data: {
+  fullName?: string | null;
+  untilText: string;
+}) {
+  const appUrl = 'https://app.linkwatcher.io';
+  const greeting = `Hi ${data.fullName?.trim() || 'there'},`;
+  const bodyLines = [
+    `Good news: our team has granted your account complimentary Marketplace Pro access, active through <strong>${data.untilText}</strong>.`,
+    'Until then you have everything Pro includes:',
+  ];
+  const features = [
+    'See every domain name and URL in the marketplace',
+    'Search listings by domain name and URL',
+    'Post buyer requests and receive publisher offers',
+    'Unlimited Pluto conversations',
+    'Reveal domains instantly, no weekly unlock limit',
+  ];
+  const badge = 'Pro Access Granted';
+  const badgeColor = '#16a34a';
+  const ctaLabel = 'Browse the marketplace';
+  const url = `${appUrl}/marketplace`;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f8fafc; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%); padding: 44px 30px; text-align: center; color: white; }
+        .logo-container { display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; background: white; border-radius: 8px; padding: 12px 20px; }
+        .logo { height: 40px; width: auto; display: block; }
+        .tagline { font-size: 16px; font-weight: 300; opacity: 0.9; letter-spacing: 0.5px; margin-bottom: 10px; color: #fff; }
+        .welcome-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; margin-top: 8px; color: #fff !important; border: 1px solid rgba(255,255,255,0.2); }
+        .content { padding: 36px 30px; }
+        .greeting { font-size: 18px; color: #1f2937; margin-bottom: 18px; }
+        .main-text { font-size: 16px; color: #4b5563; margin-bottom: 16px; line-height: 1.7; }
+        .features { background: rgba(0,0,0,0.04); border-radius: 8px; padding: 20px 24px; margin: 8px 0 24px; }
+        .features ul { list-style: none; padding: 0; }
+        .features li { padding: 6px 0; color: #4b5563; display: flex; align-items: flex-start; line-height: 1.6; }
+        .check-icon { color: #10b981; font-weight: bold; margin-right: 12px; font-size: 14px; display: inline-block; width: 16px; }
+        .cta-section { text-align: center; margin: 8px 0 4px; }
+        .cta-button { display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #fff !important; padding: 14px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(37,99,235,0.35); }
+        .footer { background: #f8fafc; padding: 22px 30px; text-align: center; font-size: 13px; color: #6b7280; border-top: 1px solid #e5e7eb; }
+        @media (max-width: 600px) { .container { border-radius: 0; } .header, .content, .footer { padding: 24px 20px; } }
+    </style>
+</head>
+<body>
+    <div style="padding: 24px 0;">
+        <div class="container">
+            <div class="header">
+                <div class="logo-container">
+                    <img src="${LW_PRO_EMAIL_LOGO}" alt="LinkWatcher" class="logo">
+                </div>
+                <div class="tagline">Your Link Building Marketplace</div>
+                <div class="welcome-badge" style="background:${badgeColor}">${badge}</div>
+            </div>
+            <div class="content">
+                <div class="greeting">${greeting}</div>
+                ${bodyLines.map((line) => `<p class="main-text">${line}</p>`).join('')}
+                <div class="features"><ul>${features.map((f) => `<li><span class="check-icon">&#10003;</span>${f}</li>`).join('')}</ul></div>
+                <div class="cta-section"><a href="${url}" class="cta-button">${ctaLabel}</a></div>
+            </div>
+            <div class="footer">
+                LinkWatcher Marketplace &middot; <a href="${appUrl}/marketplace" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+}
+
+/**
  * KYC-initiated notification sent to the publisher when an admin starts a
  * KYC/verification task for them. Sent from support@linkwatcher.io.
  */

@@ -143,7 +143,8 @@ export default function MarketplaceProPage() {
       });
       const json = await res.json();
       if (res.ok) {
-        toast.success(json.userEmail ? `Pro granted to ${json.userEmail}` : 'Pro granted');
+        const who = json.userEmail ? `Pro granted to ${json.userEmail}` : 'Pro granted';
+        toast.success(json.emailSent ? `${who} · notification email sent` : `${who} · email NOT sent`);
         setShowGrant(false);
         setGrantForm({ userId: '', source: 'promo', until: '' });
         fetchSubscriptions();
