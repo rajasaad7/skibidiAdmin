@@ -189,6 +189,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
     }
 
+    // Granting a plan re-activates monitoring that a downgrade paused (same as
+    // the paid-upgrade webhooks). Best effort: the grant stands even if this fails.
+    try {
+      const { data: orgWorkspaces } = await supabase
+        .from('workspaces')
+        .select('_id')
+        .eq('organizationId', orgId);
+      const wsIds = (orgWorkspaces || []).map((w) => w._id);
+      if (wsIds.length) {
+        await supabase
+          .from('projects')
+          .update({ disabled: false, updatedAt: new Date().toISOString() })
+          .in('workspaceId', wsIds);
+      }
+    } catch (reenableError) {
+      console.error('Plan grant project re-enable failed:', reenableError);
+    }
+
     // Notify the user, best effort: a failed email must never fail the grant.
     let emailSent = false;
     if (user.email) {
