@@ -46,6 +46,18 @@ interface ProEvent {
   createdAt: string;
 }
 
+// Active monitoring plan grants (organizations.billingMeta paymentProvider
+// 'admin_grant'), served by GET /api/plan-grants. Expired grants disappear
+// once the daily expiry cron reverts the org to Free.
+interface PlanGrant {
+  orgId: string;
+  orgName: string | null;
+  planName: string | null;
+  grantUntil: string | null;
+  grantedBy: string | null;
+  ownerEmail: string | null;
+}
+
 const STATUSES = ['active', 'past_due', 'cancelled', 'expired', 'revoked'];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -91,7 +103,30 @@ export default function MarketplaceProPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [tab, setTab] = useState<'subscriptions' | 'abuse'>('subscriptions');
+  const [tab, setTab] = useState<'subscriptions' | 'abuse' | 'grants'>('subscriptions');
+
+  // Monitoring plan grants tab
+  const [planGrants, setPlanGrants] = useState<PlanGrant[]>([]);
+  const [grantsLoading, setGrantsLoading] = useState(false);
+
+  const fetchPlanGrants = async () => {
+    setGrantsLoading(true);
+    try {
+      const res = await fetch('/api/plan-grants');
+      const json = await res.json();
+      if (res.ok) setPlanGrants(json.grants || []);
+      else toast.error(json.error || 'Failed to load plan grants');
+    } catch {
+      toast.error('Failed to load plan grants');
+    } finally {
+      setGrantsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'grants') fetchPlanGrants();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // Grant modal
   const [showGrant, setShowGrant] = useState(false);
@@ -133,6 +168,8 @@ export default function MarketplaceProPage() {
         toast.success(json.emailSent ? `${who} · notification email sent` : `${who} · email NOT sent`);
         setShowPlanGrant(false);
         setPlanGrantForm({ userId: '', planPaddleId: '', until: '' });
+        setTab('grants');
+        fetchPlanGrants();
       } else {
         toast.error(json.error || 'Plan grant failed');
       }
@@ -303,10 +340,10 @@ export default function MarketplaceProPage() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => fetchSubscriptions()}
+            onClick={() => (tab === 'grants' ? fetchPlanGrants() : fetchSubscriptions())}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            <RefreshCw className={`w-4 h-4 ${loading || grantsLoading ? 'animate-spin' : ''}`} /> Refresh
           </button>
           <button
             onClick={openPlanGrant}
@@ -362,8 +399,17 @@ export default function MarketplaceProPage() {
           >
             <ShieldAlert className="w-4 h-4" /> Abuse
           </button>
+          <button
+            onClick={() => setTab('grants')}
+            className={`px-4 py-1.5 text-sm rounded-md transition flex items-center gap-1.5 ${
+              tab === 'grants' ? 'bg-white shadow-sm text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4" /> Plan Grants
+          </button>
         </div>
 
+        {tab !== 'grants' && (
         <form onSubmit={submitSearch} className="flex items-center gap-2 flex-1 min-w-[260px]">
           <div className="relative flex-1 max-w-sm">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -378,7 +424,9 @@ export default function MarketplaceProPage() {
             Search
           </button>
         </form>
+        )}
 
+        {tab !== 'grants' && (
         <div className="relative">
           <select
             value={statusFilter}
@@ -392,6 +440,7 @@ export default function MarketplaceProPage() {
           </select>
           <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
         </div>
+        )}
       </div>
 
       {tab === 'abuse' && (
@@ -407,6 +456,43 @@ export default function MarketplaceProPage() {
       )}
 
       {/* Table */}
+      {tab === 'grants' ? (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          {grantsLoading && planGrants.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-gray-400">Loading...</div>
+          ) : planGrants.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-gray-400">
+              No active monitoring plan grants. Expired grants revert to Free automatically and drop off this list.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+                    <th className="px-5 py-3 font-medium">User</th>
+                    <th className="px-5 py-3 font-medium">Granted Plan</th>
+                    <th className="px-5 py-3 font-medium">Until</th>
+                    <th className="px-5 py-3 font-medium">Granted By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planGrants.map((g) => (
+                    <tr key={g.orgId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                      <td className="px-5 py-3">
+                        <div className="font-medium text-gray-900">{g.ownerEmail || 'Unknown user'}</div>
+                        <div className="text-xs text-gray-500">{g.orgName || g.orgId}</div>
+                      </td>
+                      <td className="px-5 py-3 font-medium text-gray-900">{g.planName || 'N/A'}</td>
+                      <td className="px-5 py-3 text-gray-500 text-xs">{fmt(g.grantUntil)}</td>
+                      <td className="px-5 py-3 text-gray-500 text-xs">{g.grantedBy || 'N/A'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         {loading && subscriptions.length === 0 ? (
           <div className="px-6 py-12 text-center text-sm text-gray-400">Loading...</div>
@@ -514,6 +600,7 @@ export default function MarketplaceProPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Grant modal */}
       {showGrant && (
