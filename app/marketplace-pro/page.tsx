@@ -26,6 +26,11 @@ interface ProSubscription {
   userFullName: string | null;
   isSuspended: boolean;
   weeklyManualUnlocks: number;
+  // Status the entitlement resolver actually applies: 'expired' when the
+  // period/grace wall has passed even if the stored status still says active.
+  effectiveStatus: string;
+  // Monitoring plan on the org this user owns (null if they own no workspace).
+  monitoringPlan: { name: string; provider: string | null; grantUntil: string | null } | null;
 }
 
 interface ProEvent {
@@ -275,8 +280,8 @@ export default function MarketplaceProPage() {
     [subscriptions]
   );
 
-  const activeCount = subscriptions.filter((s) => s.status === 'active').length;
-  const pastDueCount = subscriptions.filter((s) => s.status === 'past_due').length;
+  const activeCount = subscriptions.filter((s) => (s.effectiveStatus || s.status) === 'active').length;
+  const pastDueCount = subscriptions.filter((s) => (s.effectiveStatus || s.status) === 'past_due').length;
   const weeklyUnlockTotal = subscriptions.reduce((sum, s) => sum + s.weeklyManualUnlocks, 0);
 
   const unlockTone = (n: number) =>
@@ -415,6 +420,7 @@ export default function MarketplaceProPage() {
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
                   <th className="px-5 py-3 font-medium">User</th>
+                  <th className="px-5 py-3 font-medium">Monitoring Plan</th>
                   <th className="px-5 py-3 font-medium">Source</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium">Period End</th>
@@ -436,11 +442,28 @@ export default function MarketplaceProPage() {
                       </div>
                       <div className="text-xs text-gray-500">{s.userEmail || s.userId}</div>
                     </td>
+                    <td className="px-5 py-3">
+                      {s.monitoringPlan ? (
+                        <div>
+                          <span className={s.monitoringPlan.name === 'Free' ? 'text-gray-500' : 'font-medium text-gray-900'}>
+                            {s.monitoringPlan.name}
+                          </span>
+                          {s.monitoringPlan.provider === 'admin_grant' && s.monitoringPlan.grantUntil && (
+                            <div className="text-[11px] text-gray-400">grant until {fmt(s.monitoringPlan.grantUntil)}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">No workspace</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3"><SourceBadge source={s.source} /></td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <StatusBadge status={s.status} />
-                        {s.cancelAtPeriodEnd && s.status === 'active' && (
+                        <StatusBadge status={s.effectiveStatus || s.status} />
+                        {s.effectiveStatus === 'expired' && s.status !== 'expired' && (
+                          <span className="text-[10px] text-gray-400">was {s.status}</span>
+                        )}
+                        {s.cancelAtPeriodEnd && (s.effectiveStatus || s.status) === 'active' && (
                           <span className="text-[10px] text-gray-400">ends at period end</span>
                         )}
                       </div>
