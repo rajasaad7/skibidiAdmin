@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight, Copy } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight, Copy, ChevronDown, Check } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface Order {
@@ -171,6 +171,82 @@ function statusBadgeClass(status: string): string {
     default:
       return 'bg-orange-100 text-orange-800';
   }
+}
+
+// Custom status picker: a native <select> can't style its option list, so the
+// modal uses this listbox instead - white rounded panel, one colored status
+// pill per option, matching the table's statusBadgeClass colors.
+function StatusDropdown({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 pl-3 pr-3.5 py-2 bg-white border border-gray-300 rounded-lg hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+      >
+        {selected ? (
+          <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(selected.value)}`}>
+            {selected.label}
+          </span>
+        ) : (
+          <span className="text-sm text-gray-400">Select status</span>
+        )}
+        <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-30 mt-1.5 w-full bg-white border border-gray-100 rounded-xl shadow-xl p-1.5 max-h-72 overflow-y-auto">
+          {options.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => { onChange(option.value); setOpen(false); }}
+                className={`w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-left transition ${
+                  isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                }`}
+              >
+                <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-full ${statusBadgeClass(option.value)}`}>
+                  {option.label}
+                </span>
+                {isSelected && <Check className="w-4 h-4 text-blue-600 flex-shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function OrdersPage() {
@@ -1366,19 +1442,6 @@ export default function OrdersPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Article Content
-                  </label>
-                  <textarea
-                    value={articleContent}
-                    onChange={(e) => setArticleContent(e.target.value)}
-                    placeholder="Full article content..."
-                    rows={6}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
-                  />
-                </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1413,13 +1476,29 @@ export default function OrdersPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Google Docs Link
                   </label>
-                  <input
-                    type="url"
-                    value={googleDocsLink}
-                    onChange={(e) => setGoogleDocsLink(e.target.value)}
-                    placeholder="https://docs.google.com/document/..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                  <div className="flex items-stretch gap-2">
+                    <input
+                      type="url"
+                      value={googleDocsLink}
+                      onChange={(e) => setGoogleDocsLink(e.target.value)}
+                      placeholder="https://docs.google.com/document/..."
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {googleDocsLink && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(googleDocsLink);
+                          toast.success('Copied to clipboard!');
+                        }}
+                        title="Copy link"
+                        aria-label="Copy link"
+                        className="flex-shrink-0 px-3 flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -1589,23 +1668,50 @@ export default function OrdersPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Change Status
                   </label>
-                  <select
+                  <StatusDropdown
                     value={newStatus}
-                    onChange={(e) => setNewStatus(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    {statusOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  {isEditMode && editingOrder.status === 'disputed' && (
-                    <p className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2.5 py-1.5">
-                      Settling this dispute: set <strong>Completed</strong> to rule for the publisher
-                      (held earnings return to their balance), or <strong>Refunded</strong> to rule for
-                      the buyer (earnings stay reversed).
-                    </p>
+                    options={statusOptions}
+                    onChange={setNewStatus}
+                  />
+                  {editingOrder.status === 'disputed' && (
+                    <div className="mt-2 text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-md px-3 py-2.5">
+                      <p className="font-semibold mb-1">Resolve dispute</p>
+                      <p className="mb-2 text-rose-700">
+                        Pick a ruling, then press <strong>Save Changes</strong>. Ruling for the
+                        publisher returns the held earnings to their balance; ruling for the buyer
+                        keeps the earnings reversed and refunds the amount to the buyer's wallet.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setIsEditMode(true); setNewStatus('completed'); }}
+                          className={`px-3 py-1.5 rounded-md border font-medium transition ${
+                            isEditMode && newStatus === 'completed'
+                              ? 'bg-green-600 border-green-600 text-white'
+                              : 'bg-white border-green-300 text-green-700 hover:bg-green-50'
+                          }`}
+                        >
+                          Rule for publisher · Complete order
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditMode(true);
+                            setNewStatus('refunded');
+                            if (!refundAmount && editingOrder.totalPrice) {
+                              setRefundAmount(editingOrder.totalPrice.toString());
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-md border font-medium transition ${
+                            isEditMode && newStatus === 'refunded'
+                              ? 'bg-rose-600 border-rose-600 text-white'
+                              : 'bg-white border-rose-300 text-rose-700 hover:bg-rose-100'
+                          }`}
+                        >
+                          Rule for buyer · Refund order
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
 
