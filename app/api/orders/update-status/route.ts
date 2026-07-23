@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { sendTrueEmailer, formatOrderDisputeEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,8 +38,21 @@ export async function POST(request: NextRequest) {
       // Admin remarks
       rejectionReason,
       refundReason,
-      refundedAmount
+      refundedAmount,
+      disputeReason
     } = await request.json();
+
+    // Snapshot the current state before writing so we can detect a fresh
+    // dispute transition (email + history stamping happen only then).
+    let existingOrder: any = null;
+    if (status === 'disputed') {
+      const { data } = await supabase
+        .from('marketplace_orders')
+        .select('_id, status, disputeReason, orderNumber, publisherId, domains(domainName)')
+        .eq('_id', orderId)
+        .single();
+      existingOrder = data;
+    }
 
     const updateData: any = { status };
 
@@ -85,12 +99,68 @@ export async function POST(request: NextRequest) {
       if (refundedAmount) updateData.refundedAmount = refundedAmount;
     }
 
+    if (status === 'disputed' && disputeReason) {
+      updateData.disputeReason = disputeReason;
+    }
+
     const { error } = await supabase
       .from('marketplace_orders')
       .update(updateData)
       .eq('_id', orderId);
 
     if (error) throw error;
+
+    // On a fresh dispute (or a changed dispute reason): stamp the status-history
+    // row with the reason and notify the publisher by email. The DB trigger
+    // (order_dispute_earnings_trigger) holds the credited earnings on its own.
+    if (
+      status === 'disputed' &&
+      disputeReason &&
+      existingOrder &&
+      (existingOrder.status !== 'disputed' || existingOrder.disputeReason !== disputeReason)
+    ) {
+      try {
+        const { data: histRows } = await supabase
+          .from('order_status_history')
+          .select('_id')
+          .eq('orderId', orderId)
+          .eq('newStatus', 'disputed')
+          .is('reason', null)
+          .order('createdAt', { ascending: false })
+          .limit(1);
+        if (histRows?.[0]) {
+          await supabase
+            .from('order_status_history')
+            .update({ reason: disputeReason })
+            .eq('_id', histRows[0]._id);
+        }
+
+        const { data: publisher } = await supabase
+          .from('users')
+          .select('email, fullName')
+          .eq('_id', existingOrder.publisherId)
+          .single();
+
+        if (publisher?.email) {
+          await sendTrueEmailer({
+            to: [{ email: publisher.email, ...(publisher.fullName ? { name: publisher.fullName } : {}) }],
+            subject: `Dispute opened on order #${existingOrder.orderNumber}`,
+            htmlContent: formatOrderDisputeEmail({
+              fullName: publisher.fullName,
+              orderNumber: existingOrder.orderNumber,
+              orderId,
+              domainName: existingOrder.domains?.domainName || null,
+              disputeReason,
+            }),
+            senderName: 'Linkwatcher Marketplace',
+            senderEmail: 'marketplace@linkwatcher.io',
+          });
+        }
+      } catch (notifyError) {
+        // Never fail the status update because the notification side failed.
+        console.error('Dispute notification failed:', notifyError);
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

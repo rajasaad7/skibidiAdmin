@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, FileText, Briefcase, Shield, Flag, Wallet, BadgeCheck, TrendingUp, Crown } from 'lucide-react';
+import { LayoutDashboard, Globe, ShoppingCart, Users, DollarSign, LogOut, User, Activity, Menu, X, Zap, Bug, Mail, Shield, Flag, Wallet, BadgeCheck, TrendingUp, Crown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface SidebarProps {
@@ -15,7 +15,7 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, updateRequests: 0, pendingPayouts: 0, newWhiteLabelLeads: 0, pendingModerationRequests: 0, lowSinbyteBalance: false });
+  const [notifications, setNotifications] = useState({ newContacts: 0, newBugs: 0, pendingDomains: 0, updateRequests: 0, pendingPayouts: 0, pendingModerationRequests: 0, lowSinbyteBalance: false });
 
   useEffect(() => {
     setIsNavigating(false);
@@ -60,7 +60,6 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
     { href: '/users', icon: Users, label: 'Users', roles: ['super_admin'] },
     { href: '/affiliates', icon: TrendingUp, label: 'Affiliates', roles: ['super_admin'] },
     { href: '/risk-control', icon: Shield, label: 'Risk Control', roles: ['super_admin'] },
-    { href: '/press-releases', icon: FileText, label: 'Press Releases', roles: ['super_admin', 'colleague'] },
     { href: '/domains', icon: Globe, label: 'Domains', roles: ['super_admin', 'colleague'] },
     { href: '/orders', icon: ShoppingCart, label: 'Orders', roles: ['super_admin'] },
     { href: '/marketplace-pro', icon: Crown, label: 'Paid Plans', roles: ['super_admin'] },
@@ -69,7 +68,6 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
     { href: '/balance', icon: Wallet, label: 'Balance', roles: ['super_admin'] },
     { href: '/indexer', icon: Zap, label: 'Indexer', roles: ['super_admin'] },
     { href: '/contacts', icon: Mail, label: 'Contact Submissions', roles: ['super_admin', 'colleague'] },
-    { href: '/white-label-leads', icon: Briefcase, label: 'White Label Leads', roles: ['super_admin', 'colleague'] },
     { href: '/moderation-requests', icon: Flag, label: 'Moderation Requests', roles: ['super_admin'] },
     { href: '/bugs', icon: Bug, label: 'Bug Reports', roles: ['super_admin'] },
   ];
@@ -147,11 +145,6 @@ export default function Sidebar({ adminEmail = 'admin@linkwatcher.io', userRole 
                   {item.href === '/bugs' && notifications.newBugs > 0 && (
                     <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
                       {notifications.newBugs}
-                    </span>
-                  )}
-                  {item.href === '/white-label-leads' && notifications.newWhiteLabelLeads > 0 && (
-                    <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
-                      {notifications.newWhiteLabelLeads}
                     </span>
                   )}
                   {item.href === '/moderation-requests' && notifications.pendingModerationRequests > 0 && (

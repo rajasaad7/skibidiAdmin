@@ -50,10 +50,10 @@ export async function clearAuth() {
 
 export function getAllowedPages(role: UserRole): string[] {
   if (role === 'super_admin') {
-    return ['/dashboard', '/activity', '/users', '/affiliates', '/press-releases', '/domains', '/orders', '/payouts', '/kyc-check', '/indexer', '/contacts', '/white-label-leads', '/moderation-requests', '/bugs'];
+    return ['/dashboard', '/activity', '/users', '/affiliates', '/domains', '/orders', '/payouts', '/kyc-check', '/indexer', '/contacts', '/moderation-requests', '/bugs'];
   }
   if (role === 'colleague') {
-    return ['/domains', '/activity', '/contacts', '/white-label-leads', '/press-releases'];
+    return ['/domains', '/activity', '/contacts'];
   }
   return [];
 }

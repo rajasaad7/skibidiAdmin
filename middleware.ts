@@ -18,7 +18,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Define colleague-allowed pages
-  const colleagueAllowedPages = ['/domains', '/activity', '/contacts', '/white-label-leads', '/press-releases'];
+  const colleagueAllowedPages = ['/domains', '/activity', '/contacts'];
 
   // If user is colleague, check if they're trying to access unauthorized page
   if (userRole === 'colleague') {

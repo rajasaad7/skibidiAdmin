@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 export async function GET() {
   try {
     // Fetch all counts in parallel for better performance
-    const [contactsResult, bugsResult, statsResult, payoutsResult, processingPayoutsResult, whiteLabelLeadsResult, moderationRequestsResult, sinbyteBalanceResult] = await Promise.all([
+    const [contactsResult, bugsResult, statsResult, payoutsResult, processingPayoutsResult, moderationRequestsResult, sinbyteBalanceResult] = await Promise.all([
       // Get count of new contacts (status = 'new' or 'pending')
       supabase
         .from('contacts')
@@ -32,12 +32,6 @@ export async function GET() {
         .from('publisher_payouts')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'processing'),
-
-      // Get count of pending white label leads (status = 'pending')
-      supabase
-        .from('white_label_leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending'),
 
       // Get count of pending moderation requests (status = 'pending')
       supabase
@@ -68,9 +62,6 @@ export async function GET() {
     if (processingPayoutsResult.error) {
       console.error('Processing payouts error:', processingPayoutsResult.error);
     }
-    if (whiteLabelLeadsResult.error) {
-      console.error('White label leads error:', whiteLabelLeadsResult.error);
-    }
     if (moderationRequestsResult.error) {
       console.error('Moderation requests error:', moderationRequestsResult.error);
     }
@@ -95,7 +86,6 @@ export async function GET() {
         pendingDomains: stats.pending || 0,
         updateRequests: stats.updateRequests || 0,
         pendingPayouts: (payoutsResult.count || 0) + (processingPayoutsResult.count || 0),
-        newWhiteLabelLeads: whiteLabelLeadsResult.count || 0,
         pendingModerationRequests: moderationRequestsResult.count || 0,
         lowSinbyteBalance,
       }

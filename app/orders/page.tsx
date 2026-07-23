@@ -55,6 +55,7 @@ interface Order {
   // Remarks
   rejectionReason?: string;
   refundReason?: string;
+  disputeReason?: string;
   refundedAmount?: number;
   refundRequestedAt?: string;
   refundedAt?: string;
@@ -465,6 +466,9 @@ export default function OrdersPage() {
       if (newStatus === 'refunded' || newStatus === 'refund_requested') {
         if (adminRemarks) payload.refundReason = adminRemarks;
         if (refundAmount) payload.refundedAmount = parseFloat(refundAmount);
+      }
+      if (newStatus === 'disputed' && adminRemarks) {
+        payload.disputeReason = adminRemarks;
       }
 
       const response = await fetch('/api/orders/update-status', {
@@ -958,7 +962,6 @@ export default function OrdersPage() {
                         <option value="guest_post">Guest Post</option>
                         <option value="link_insertion">Link Insertion</option>
                         <option value="featured_domain">Featured Domain</option>
-                        <option value="press_release">Press Release</option>
                       </select>
                     )}
                   </div>
@@ -1597,6 +1600,13 @@ export default function OrdersPage() {
                       </option>
                     ))}
                   </select>
+                  {isEditMode && editingOrder.status === 'disputed' && (
+                    <p className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2.5 py-1.5">
+                      Settling this dispute: set <strong>Completed</strong> to rule for the publisher
+                      (held earnings return to their balance), or <strong>Refunded</strong> to rule for
+                      the buyer (earnings stay reversed).
+                    </p>
+                  )}
                 </div>
 
                 {/* Refund Amount */}
@@ -1621,7 +1631,8 @@ export default function OrdersPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Admin Remarks
-                    {(newStatus === 'revision_requested' || newStatus === 'rejected') && (
+                    {(newStatus === 'revision_requested' || newStatus === 'rejected' ||
+                      (newStatus === 'disputed' && editingOrder.status !== 'disputed')) && (
                       <span className="text-red-600 ml-1">*</span>
                     )}
                   </label>
@@ -1632,6 +1643,7 @@ export default function OrdersPage() {
                       newStatus === 'revision_requested' ? 'Explain what needs to be revised...' :
                       newStatus === 'rejected' ? 'Explain the reason for rejection...' :
                       newStatus === 'refunded' || newStatus === 'refund_requested' ? 'Explain the reason for refund...' :
+                      newStatus === 'disputed' ? 'Explain the dispute reason (shown to both parties and emailed to the publisher)...' :
                       'Add any admin notes or remarks...'
                     }
                     rows={3}
@@ -1677,10 +1689,16 @@ export default function OrdersPage() {
               })()}
 
               {/* Previous Remarks */}
-              {(editingOrder.rejectionReason || editingOrder.refundReason) && (
+              {(editingOrder.rejectionReason || editingOrder.refundReason || editingOrder.disputeReason) && (
                 <div className="bg-yellow-50 rounded-lg p-4">
                   <h4 className="text-sm font-semibold text-yellow-900 mb-2">Previous Remarks</h4>
                   <div className="space-y-2">
+                    {editingOrder.disputeReason && (
+                      <div className="text-sm">
+                        <span className="font-medium text-yellow-800">Dispute Reason:</span>
+                        <p className="text-yellow-700 mt-1">{editingOrder.disputeReason}</p>
+                      </div>
+                    )}
                     {editingOrder.rejectionReason && (
                       <div className="text-sm">
                         <span className="font-medium text-yellow-800">Rejection Reason:</span>
@@ -1715,7 +1733,7 @@ export default function OrdersPage() {
                 </button>
                 <button
                   onClick={handleUpdateStatus}
-                  disabled={isSaving || !newStatus || ((newStatus === 'revision_requested' || newStatus === 'rejected') && !adminRemarks)}
+                  disabled={isSaving || !newStatus || ((newStatus === 'revision_requested' || newStatus === 'rejected') && !adminRemarks) || (newStatus === 'disputed' && editingOrder.status !== 'disputed' && !adminRemarks)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isSaving && (
