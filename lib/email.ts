@@ -281,10 +281,11 @@ export function formatKycInitiatedEmail(data: {
 
 /**
  * Notification sent to BOTH the publisher and the buyer when an admin opens a
- * dispute on a marketplace order. Same template as the app's dispute email
- * (sendExchangeDisputeEmail in src/lib/emailHelper.js): red gradient header +
- * dispute-box reason. The reason is the admin's remark; the publisher is
- * expected to fix it, otherwise the order is refunded to the buyer.
+ * dispute on a marketplace order. Uses the standard marketplace email header
+ * (dark slate gradient, LinkWatcher logo box, tagline, badge pill), matching
+ * the app's marketplace order emails in src/lib/emailHelper.js. The reason is
+ * the admin's remark; the publisher is expected to fix it, otherwise the order
+ * is refunded to the buyer.
  */
 export function formatOrderDisputeEmail(data: {
   role: 'publisher' | 'buyer';
@@ -304,49 +305,65 @@ export function formatOrderDisputeEmail(data: {
       : `https://app.linkwatcher.io/marketplace/orders/${data.orderId}`;
   const intro =
     data.role === 'publisher'
-      ? `<p>A dispute has been opened on your ${orderLabel}. While the dispute is reviewed, the earnings from this order are on hold and have been deducted from your available balance.</p>`
-      : `<p>A dispute has been opened on your ${orderLabel}. The reason for the dispute is shown below, and the publisher has been asked to resolve it.</p>`;
+      ? `A dispute has been opened on your ${orderLabel}. While the dispute is reviewed, the earnings from this order are on hold and have been deducted from your available balance.`
+      : `A dispute has been opened on your ${orderLabel}. The reason for the dispute is shown below, and the publisher has been asked to resolve it.`;
   const nextSteps =
     data.role === 'publisher'
-      ? `<p><strong>What happens next:</strong> please review the reason above and fix the issue on this order. If the issue is resolved, the dispute will be closed and your held earnings will be returned to your balance. If it is not resolved, the order will be refunded to the buyer and the held earnings will not be released.</p>`
-      : `<p><strong>What happens next:</strong> the publisher is expected to fix the issue described above. If they resolve it, the dispute will be closed and the order will be marked completed. If it is not resolved, the order amount will be refunded to you.</p>`;
-  return `
-<!DOCTYPE html>
-<html>
+      ? `<strong>What happens next:</strong> please review the reason above and fix the issue on this order. If the issue is resolved, the dispute will be closed and your held earnings will be returned to your balance. If it is not resolved, the order will be refunded to the buyer and the held earnings will not be released.`
+      : `<strong>What happens next:</strong> the publisher is expected to fix the issue described above. If they resolve it, the dispute will be closed and the order will be marked completed. If it is not resolved, the order amount will be refunded to you.`;
+  return `<!DOCTYPE html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 40px 30px; text-align: center; }
-        .header h1 { color: white; margin: 0; font-size: 28px; }
-        .content { padding: 40px 30px; }
-        .dispute-box { background: #fef2f2; border-left: 4px solid #ef4444; padding: 15px; margin: 20px 0; }
-        .button { display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 20px 0; }
-        .footer { background: #f8fafc; padding: 20px; text-align: center; font-size: 14px; color: #6b7280; border-top: 1px solid #e5e7eb; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f8fafc; }
+        .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%); padding: 44px 30px; text-align: center; color: white; }
+        .logo-container { display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; background: white; border-radius: 8px; padding: 12px 20px; }
+        .logo { height: 40px; width: auto; display: block; }
+        .tagline { font-size: 16px; font-weight: 300; opacity: 0.9; letter-spacing: 0.5px; margin-bottom: 10px; color: #fff; }
+        .welcome-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; margin-top: 8px; color: #fff !important; border: 1px solid rgba(255,255,255,0.2); background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .content { padding: 36px 30px; }
+        .greeting { font-size: 18px; color: #1f2937; margin-bottom: 18px; }
+        .main-text { font-size: 16px; color: #4b5563; margin-bottom: 16px; line-height: 1.7; }
+        .dispute-box { background: #fef2f2; border-left: 4px solid #ef4444; border-radius: 0 8px 8px 0; padding: 16px 20px; margin: 8px 0 20px; color: #4b5563; }
+        .cta-section { text-align: center; margin: 8px 0 4px; }
+        .cta-button { display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #fff !important; padding: 14px 30px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(37,99,235,0.35); }
+        .footer { background: #f8fafc; padding: 22px 30px; text-align: center; font-size: 13px; color: #6b7280; border-top: 1px solid #e5e7eb; }
+        @media (max-width: 600px) { .container { border-radius: 0; } .header, .content, .footer { padding: 24px 20px; } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Dispute Opened</h1>
-        </div>
-        <div class="content">
-            <p>Hi ${name},</p>
-            ${intro}
-            ${data.disputeReason ? `
-            <div class="dispute-box">
-                <strong>Reason for the dispute:</strong><br>
-                ${data.disputeReason}
+    <div style="padding: 24px 0;">
+        <div class="container">
+            <div class="header">
+                <div class="logo-container">
+                    <img src="${LW_PRO_EMAIL_LOGO}" alt="LinkWatcher" class="logo">
+                </div>
+                <div class="tagline">Your Link Building Marketplace</div>
+                <div class="welcome-badge">Dispute Opened</div>
             </div>
-            ` : ''}
-            ${nextSteps}
-            <p>Our support team will review this matter and get back to you within 24-48 hours. In the meantime, you can view the order details or contact our support team if you have any questions.</p>
-            <div style="text-align: center;">
-                <a href="${url}" class="button" style="color: #ffffff !important;">View Order Details</a>
+            <div class="content">
+                <div class="greeting">Hi ${name},</div>
+                <p class="main-text">${intro}</p>
+                ${data.disputeReason ? `
+                <div class="dispute-box">
+                    <strong style="color:#991b1b;">Reason for the dispute:</strong><br>
+                    ${data.disputeReason}
+                </div>
+                ` : ''}
+                <p class="main-text">${nextSteps}</p>
+                <p class="main-text">Our support team will review this matter and get back to you within 24-48 hours. In the meantime, you can view the order details or contact our support team if you have any questions.</p>
+                <div class="cta-section">
+                    <a href="${url}" class="cta-button">View Order Details</a>
+                </div>
             </div>
-        </div>
-        <div class="footer">
-            <p style="margin: 0;">Need help? Contact us at support@linkwatcher.io</p>
+            <div class="footer">
+                Need help? Contact us at support@linkwatcher.io<br>
+                LinkWatcher Marketplace &middot; <a href="https://app.linkwatcher.io" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
+            </div>
         </div>
     </div>
 </body>
