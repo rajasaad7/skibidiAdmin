@@ -280,11 +280,14 @@ export function formatKycInitiatedEmail(data: {
 }
 
 /**
- * Publisher notification when an admin opens a dispute on a marketplace order.
- * Same template as the app's dispute email (sendExchangeDisputeEmail in
- * src/lib/emailHelper.js): red gradient header + dispute-box reason.
+ * Notification sent to BOTH the publisher and the buyer when an admin opens a
+ * dispute on a marketplace order. Same template as the app's dispute email
+ * (sendExchangeDisputeEmail in src/lib/emailHelper.js): red gradient header +
+ * dispute-box reason. The reason is the admin's remark; the publisher is
+ * expected to fix it, otherwise the order is refunded to the buyer.
  */
 export function formatOrderDisputeEmail(data: {
+  role: 'publisher' | 'buyer';
   fullName?: string | null;
   orderNumber: string;
   orderId: string;
@@ -295,7 +298,18 @@ export function formatOrderDisputeEmail(data: {
   const orderLabel = data.domainName
     ? `order <strong>#${data.orderNumber}</strong> (${data.domainName})`
     : `order <strong>#${data.orderNumber}</strong>`;
-  const url = `https://app.linkwatcher.io/marketplace/publisher/orders/${data.orderId}`;
+  const url =
+    data.role === 'publisher'
+      ? `https://app.linkwatcher.io/marketplace/publisher/orders/${data.orderId}`
+      : `https://app.linkwatcher.io/marketplace/orders/${data.orderId}`;
+  const intro =
+    data.role === 'publisher'
+      ? `<p>A dispute has been opened on your ${orderLabel}. While the dispute is reviewed, the earnings from this order are on hold and have been deducted from your available balance.</p>`
+      : `<p>A dispute has been opened on your ${orderLabel}. The reason for the dispute is shown below, and the publisher has been asked to resolve it.</p>`;
+  const nextSteps =
+    data.role === 'publisher'
+      ? `<p><strong>What happens next:</strong> please review the reason above and fix the issue on this order. If the issue is resolved, the dispute will be closed and your held earnings will be returned to your balance. If it is not resolved, the order will be refunded to the buyer and the held earnings will not be released.</p>`
+      : `<p><strong>What happens next:</strong> the publisher is expected to fix the issue described above. If they resolve it, the dispute will be closed and the order will be marked completed. If it is not resolved, the order amount will be refunded to you.</p>`;
   return `
 <!DOCTYPE html>
 <html>
@@ -318,15 +332,15 @@ export function formatOrderDisputeEmail(data: {
         </div>
         <div class="content">
             <p>Hi ${name},</p>
-            <p>A dispute has been opened on your ${orderLabel}. While the dispute is reviewed, the earnings from this order are on hold and have been deducted from your available balance. If the dispute is resolved in your favor, they will be returned to your balance.</p>
+            ${intro}
             ${data.disputeReason ? `
             <div class="dispute-box">
-                <strong>Reason:</strong><br>
+                <strong>Reason for the dispute:</strong><br>
                 ${data.disputeReason}
             </div>
             ` : ''}
-            <p>Our support team will review this matter and get back to you within 24-48 hours.</p>
-            <p>In the meantime, you can view the order details or contact our support team if you have any questions.</p>
+            ${nextSteps}
+            <p>Our support team will review this matter and get back to you within 24-48 hours. In the meantime, you can view the order details or contact our support team if you have any questions.</p>
             <div style="text-align: center;">
                 <a href="${url}" class="button" style="color: #ffffff !important;">View Order Details</a>
             </div>
