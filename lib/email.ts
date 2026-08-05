@@ -311,6 +311,84 @@ export function formatOrderDisputeEmail(data: {
     data.role === 'publisher'
       ? `<strong>What happens next:</strong> please review the reason above and fix the issue on this order. If the issue is resolved, the dispute will be closed and your held earnings will be returned to your balance. If it is not resolved, the order will be refunded to the buyer and the held earnings will not be released.`
       : `<strong>What happens next:</strong> the publisher is expected to fix the issue described above. If they resolve it, the dispute will be closed and the order will be marked completed. If it is not resolved, the order amount will be refunded to you.`;
+  return marketplaceDisputeEmailShell({
+    badgeText: 'Dispute Opened',
+    badgeGradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+    name,
+    intro,
+    reasonLabel: 'Reason for the dispute:',
+    reason: data.disputeReason,
+    nextSteps,
+    supportLine:
+      'Our support team will review this matter and get back to you within 24-48 hours. In the meantime, you can view the order details or contact our support team if you have any questions.',
+    url,
+  });
+}
+
+/**
+ * Notification sent to BOTH the publisher and the buyer when an admin settles a
+ * disputed order, either back to completed (publisher fixed it, held earnings
+ * released) or to refunded (order amount returned to the buyer's wallet, held
+ * earnings kept). Same marketplace template as the dispute-opened email.
+ */
+export function formatOrderDisputeResolvedEmail(data: {
+  role: 'publisher' | 'buyer';
+  resolution: 'completed' | 'refunded';
+  fullName?: string | null;
+  orderNumber: string;
+  orderId: string;
+  domainName?: string | null;
+  disputeReason?: string | null;
+}) {
+  const name = data.fullName?.trim() || 'there';
+  const orderLabel = data.domainName
+    ? `order <strong>#${data.orderNumber}</strong> (${data.domainName})`
+    : `order <strong>#${data.orderNumber}</strong>`;
+  const url =
+    data.role === 'publisher'
+      ? `https://app.linkwatcher.io/marketplace/publisher/orders/${data.orderId}`
+      : `https://app.linkwatcher.io/marketplace/orders/${data.orderId}`;
+  const completed = data.resolution === 'completed';
+  const intro = completed
+    ? `The dispute on your ${orderLabel} has been resolved and the order is now marked as <strong>completed</strong>.`
+    : `The dispute on your ${orderLabel} could not be resolved and the order has been <strong>refunded</strong> to the buyer.`;
+  const nextSteps = completed
+    ? data.role === 'publisher'
+      ? `<strong>What this means for you:</strong> the issue is considered fixed, the dispute is closed, and the earnings that were on hold for this order have been released back to your available balance. No further action is needed.`
+      : `<strong>What this means for you:</strong> the publisher has resolved the issue raised in the dispute and the order is closed as completed. If you still see a problem with the delivered work, please contact our support team.`
+    : data.role === 'publisher'
+      ? `<strong>What this means for you:</strong> the order amount has been refunded to the buyer and the earnings that were on hold for this order will not be released. If you believe this outcome is incorrect, please contact our support team.`
+      : `<strong>What this means for you:</strong> the order amount has been credited back to your Linkwatcher wallet balance. You can use it on any future marketplace order.`;
+  return marketplaceDisputeEmailShell({
+    badgeText: completed ? 'Dispute Resolved' : 'Order Refunded',
+    badgeGradient: completed
+      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+      : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+    name,
+    intro,
+    reasonLabel: 'Original dispute reason:',
+    reason: data.disputeReason,
+    nextSteps,
+    supportLine:
+      'This dispute is now closed. You can view the order details anytime, or contact our support team if you have any questions.',
+    url,
+  });
+}
+
+// Shared shell for the dispute lifecycle emails: standard marketplace header
+// (dark slate gradient, LinkWatcher logo box, tagline, badge pill), matching
+// the app's marketplace order emails in src/lib/emailHelper.js.
+function marketplaceDisputeEmailShell(opts: {
+  badgeText: string;
+  badgeGradient: string;
+  name: string;
+  intro: string;
+  reasonLabel: string;
+  reason?: string | null;
+  nextSteps: string;
+  supportLine: string;
+  url: string;
+}) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -324,7 +402,7 @@ export function formatOrderDisputeEmail(data: {
         .logo-container { display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; background: white; border-radius: 8px; padding: 12px 20px; }
         .logo { height: 40px; width: auto; display: block; }
         .tagline { font-size: 16px; font-weight: 300; opacity: 0.9; letter-spacing: 0.5px; margin-bottom: 10px; color: #fff; }
-        .welcome-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; margin-top: 8px; color: #fff !important; border: 1px solid rgba(255,255,255,0.2); background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .welcome-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 500; margin-top: 8px; color: #fff !important; border: 1px solid rgba(255,255,255,0.2); background: ${opts.badgeGradient}; }
         .content { padding: 36px 30px; }
         .greeting { font-size: 18px; color: #1f2937; margin-bottom: 18px; }
         .main-text { font-size: 16px; color: #4b5563; margin-bottom: 16px; line-height: 1.7; }
@@ -343,21 +421,21 @@ export function formatOrderDisputeEmail(data: {
                     <img src="${LW_PRO_EMAIL_LOGO}" alt="LinkWatcher" class="logo">
                 </div>
                 <div class="tagline">Your Link Building Marketplace</div>
-                <div class="welcome-badge">Dispute Opened</div>
+                <div class="welcome-badge">${opts.badgeText}</div>
             </div>
             <div class="content">
-                <div class="greeting">Hi ${name},</div>
-                <p class="main-text">${intro}</p>
-                ${data.disputeReason ? `
+                <div class="greeting">Hi ${opts.name},</div>
+                <p class="main-text">${opts.intro}</p>
+                ${opts.reason ? `
                 <div class="dispute-box">
-                    <strong style="color:#991b1b;">Reason for the dispute:</strong><br>
-                    ${data.disputeReason}
+                    <strong style="color:#991b1b;">${opts.reasonLabel}</strong><br>
+                    ${opts.reason}
                 </div>
                 ` : ''}
-                <p class="main-text">${nextSteps}</p>
-                <p class="main-text">Our support team will review this matter and get back to you within 24-48 hours. In the meantime, you can view the order details or contact our support team if you have any questions.</p>
+                <p class="main-text">${opts.nextSteps}</p>
+                <p class="main-text">${opts.supportLine}</p>
                 <div class="cta-section">
-                    <a href="${url}" class="cta-button">View Order Details</a>
+                    <a href="${opts.url}" class="cta-button">View Order Details</a>
                 </div>
             </div>
             <div class="footer">

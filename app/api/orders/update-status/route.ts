@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { sendTrueEmailer, formatOrderDisputeEmail } from '@/lib/email';
+import { sendTrueEmailer, formatOrderDisputeEmail, formatOrderDisputeResolvedEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,9 +43,10 @@ export async function POST(request: NextRequest) {
     } = await request.json();
 
     // Snapshot the current state before writing so we can detect a fresh
-    // dispute transition (email + history stamping happen only then).
+    // dispute transition (email + history stamping happen only then) and a
+    // dispute settlement (disputed -> completed/refunded, emails both parties).
     let existingOrder: any = null;
-    if (status === 'disputed') {
+    if (status === 'disputed' || status === 'completed' || status === 'refunded') {
       const { data } = await supabase
         .from('marketplace_orders')
         .select('_id, status, disputeReason, orderNumber, publisherId, buyerId, domains(domainName)')
@@ -175,6 +176,61 @@ export async function POST(request: NextRequest) {
       } catch (notifyError) {
         // Never fail the status update because the notification side failed.
         console.error('Dispute notification failed:', notifyError);
+      }
+    }
+
+    // Dispute settled (disputed -> completed or refunded): notify BOTH parties
+    // with the same template. The DB trigger handles the money on its own
+    // (completed releases the held earnings, refunded credits the buyer wallet).
+    if (
+      (status === 'completed' || status === 'refunded') &&
+      existingOrder &&
+      existingOrder.status === 'disputed'
+    ) {
+      try {
+        const resolution = status as 'completed' | 'refunded';
+        const recipients: { role: 'publisher' | 'buyer'; userId: string | null }[] = [
+          { role: 'publisher', userId: existingOrder.publisherId },
+          { role: 'buyer', userId: existingOrder.buyerId },
+        ];
+
+        for (const recipient of recipients) {
+          if (!recipient.userId) continue;
+          try {
+            const { data: user } = await supabase
+              .from('users')
+              .select('email, fullName')
+              .eq('_id', recipient.userId)
+              .single();
+
+            if (user?.email) {
+              await sendTrueEmailer({
+                to: [{ email: user.email, ...(user.fullName ? { name: user.fullName } : {}) }],
+                subject:
+                  resolution === 'completed'
+                    ? `Dispute resolved on order #${existingOrder.orderNumber}`
+                    : `Dispute resolved: order #${existingOrder.orderNumber} refunded`,
+                htmlContent: formatOrderDisputeResolvedEmail({
+                  role: recipient.role,
+                  resolution,
+                  fullName: user.fullName,
+                  orderNumber: existingOrder.orderNumber,
+                  orderId,
+                  domainName: existingOrder.domains?.domainName || null,
+                  disputeReason: existingOrder.disputeReason,
+                }),
+                senderName: 'Linkwatcher Marketplace',
+                senderEmail: 'marketplace@linkwatcher.io',
+              });
+            }
+          } catch (recipientError) {
+            // One recipient failing must not block the other.
+            console.error(`Dispute resolution email to ${recipient.role} failed:`, recipientError);
+          }
+        }
+      } catch (notifyError) {
+        // Never fail the status update because the notification side failed.
+        console.error('Dispute resolution notification failed:', notifyError);
       }
     }
 

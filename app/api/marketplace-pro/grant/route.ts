@@ -73,6 +73,34 @@ export async function POST(request: NextRequest) {
     }
     const user = matches[0];
 
+    // Warn before granting to a user who already has Pro through a PAID source
+    // (their own Dodo subscription, or Pro bundled with a paid monitoring plan):
+    // the grant would be redundant. The admin can resend with confirm: true to
+    // proceed anyway. Best effort: a resolver failure never blocks the grant.
+    if (body.confirm !== true) {
+      const { data: resolved, error: resolveErr } = await supabase.rpc('resolve_marketplace_pro', {
+        p_user_id: user._id,
+      });
+      if (resolveErr) {
+        console.error('resolve_marketplace_pro pre-grant check failed:', resolveErr.message);
+      } else {
+        const pro = resolved as { isPro?: boolean; source?: string | null; until?: string | null } | null;
+        if (pro?.isPro && (pro.source === 'subscription' || pro.source === 'plan')) {
+          const untilText = pro.until
+            ? new Date(pro.until).toLocaleDateString('en-US', { dateStyle: 'long', timeZone: 'UTC' })
+            : null;
+          const warning =
+            pro.source === 'subscription'
+              ? `${user.email} already has an active PAID Pro subscription${untilText ? ` (current period ends ${untilText} UTC)` : ''}. A grant is redundant.`
+              : `${user.email} already gets Pro bundled with a paid monitoring plan. A grant is redundant.`;
+          return NextResponse.json(
+            { requiresConfirmation: true, warning, proSource: pro.source, proUntil: pro.until, userEmail: user.email },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
     const { data, error } = await supabase.rpc('admin_grant_marketplace_pro', {
       p_user_id: user._id,
       p_source: source,

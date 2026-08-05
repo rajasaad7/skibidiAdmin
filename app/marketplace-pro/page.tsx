@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Crown, RefreshCw, Search, Plus, X, ShieldAlert, Ban, ScrollText,
-  RotateCw, ExternalLink, ChevronDown, TrendingUp,
+  RotateCw, ExternalLink, ChevronDown, TrendingUp, AlertTriangle,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -132,6 +132,9 @@ export default function MarketplaceProPage() {
   const [showGrant, setShowGrant] = useState(false);
   const [grantForm, setGrantForm] = useState({ userId: '', source: 'promo', until: '' });
   const [granting, setGranting] = useState(false);
+  // Set when the grant API answers 409: the user already has Pro via a paid
+  // source. The next submit resends with confirm: true ("Grant anyway").
+  const [grantWarning, setGrantWarning] = useState<string | null>(null);
 
   // Monitoring plan grant modal (same flow, but grants a monitoring PLAN to the
   // user's owned org via /api/plan-grants; auto-reverts to Free after the date)
@@ -226,7 +229,7 @@ export default function MarketplaceProPage() {
       const res = await fetch('/api/marketplace-pro/grant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(grantForm),
+        body: JSON.stringify({ ...grantForm, confirm: !!grantWarning }),
       });
       const json = await res.json();
       if (res.ok) {
@@ -234,7 +237,10 @@ export default function MarketplaceProPage() {
         toast.success(json.emailSent ? `${who} · notification email sent` : `${who} · email NOT sent`);
         setShowGrant(false);
         setGrantForm({ userId: '', source: 'promo', until: '' });
+        setGrantWarning(null);
         fetchSubscriptions();
+      } else if (res.status === 409 && json.requiresConfirmation) {
+        setGrantWarning(json.warning || 'This user already has Pro through a paid source.');
       } else {
         toast.error(json.error || 'Grant failed');
       }
@@ -604,13 +610,13 @@ export default function MarketplaceProPage() {
 
       {/* Grant modal */}
       {showGrant && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowGrant(false)}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setShowGrant(false); setGrantWarning(null); }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Crown className="w-5 h-5 text-amber-500" /> Grant Marketplace Pro
               </h2>
-              <button onClick={() => setShowGrant(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setShowGrant(false); setGrantWarning(null); }} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -620,7 +626,7 @@ export default function MarketplaceProPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1.5">User email or ID</label>
                 <input
                   value={grantForm.userId}
-                  onChange={(e) => setGrantForm({ ...grantForm, userId: e.target.value })}
+                  onChange={(e) => { setGrantForm({ ...grantForm, userId: e.target.value }); setGrantWarning(null); }}
                   required
                   className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
                   placeholder="user@example.com or users._id"
@@ -656,12 +662,19 @@ export default function MarketplaceProPage() {
                 Pro access lasts through the chosen day (UTC). The grant is recorded with your admin email.
               </p>
 
+              {grantWarning && (
+                <div className="flex gap-2 items-start bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800">{grantWarning}</p>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={granting}
                 className="w-full bg-amber-500 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-60"
               >
-                {granting ? 'Granting...' : 'Grant Pro'}
+                {granting ? 'Granting...' : grantWarning ? 'Grant anyway' : 'Grant Pro'}
               </button>
             </form>
           </div>
