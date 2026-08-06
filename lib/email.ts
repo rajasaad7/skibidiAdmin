@@ -375,9 +375,65 @@ export function formatOrderDisputeResolvedEmail(data: {
   });
 }
 
-// Shared shell for the dispute lifecycle emails: standard marketplace header
-// (dark slate gradient, LinkWatcher logo box, tagline, badge pill), matching
-// the app's marketplace order emails in src/lib/emailHelper.js.
+/**
+ * Notification sent to a user when an admin suspends their account. Standard
+ * LinkWatcher email shell (slate gradient header, logo box, badge pill), with
+ * the admin's suspension reason shown in the highlighted box.
+ */
+export function formatAccountSuspendedEmail(data: {
+  fullName?: string | null;
+  suspensionReason?: string | null;
+}) {
+  const name = data.fullName?.trim() || 'there';
+  return marketplaceDisputeEmailShell({
+    tagline: 'Backlink Monitoring & Link Building Marketplace',
+    footerLabel: 'LinkWatcher',
+    badgeText: 'Account Suspended',
+    badgeGradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+    name,
+    intro:
+      'Your Linkwatcher account has been <strong>suspended</strong> by our team. While your account is suspended, access to Linkwatcher features is restricted: new marketplace orders, offers and payouts are paused, and any marketplace listings you own are hidden from buyers.',
+    reasonLabel: 'Reason for the suspension:',
+    reason: data.suspensionReason,
+    nextSteps:
+      '<strong>What happens next:</strong> if you believe this suspension is a mistake, or you would like to appeal it, please reply to this email or write to support@linkwatcher.io with any details that can help us review your case.',
+    supportLine:
+      'Our team reviews every appeal and will get back to you within 24-48 hours.',
+    ctaLabel: 'Contact Support',
+    url: 'mailto:support@linkwatcher.io',
+  });
+}
+
+/**
+ * Notification sent to a user when an admin lifts the suspension on their
+ * account. Same shell as the suspension email, green badge, no reason box.
+ */
+export function formatAccountUnsuspendedEmail(data: { fullName?: string | null }) {
+  const name = data.fullName?.trim() || 'there';
+  return marketplaceDisputeEmailShell({
+    tagline: 'Backlink Monitoring & Link Building Marketplace',
+    footerLabel: 'LinkWatcher',
+    badgeText: 'Account Reactivated',
+    badgeGradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    name,
+    intro:
+      'Good news: your Linkwatcher account has been <strong>reactivated</strong> and the suspension has been lifted.',
+    reasonLabel: '',
+    reason: null,
+    nextSteps:
+      '<strong>What this means for you:</strong> full access to your account has been restored. Marketplace orders, offers and payouts work again, and any marketplace listings you own are visible to buyers.',
+    supportLine:
+      'Thanks for your patience while this was resolved. If you have any questions, just reply to this email and our team will help you out.',
+    ctaLabel: 'Open your dashboard',
+    url: 'https://app.linkwatcher.io/dashboard',
+  });
+}
+
+// Shared shell for the dispute lifecycle + account suspension emails: standard
+// marketplace header (dark slate gradient, LinkWatcher logo box, tagline,
+// badge pill), matching the app's marketplace order emails in
+// src/lib/emailHelper.js. tagline/footerLabel/ctaLabel default to the
+// marketplace dispute wording so existing callers are unchanged.
 function marketplaceDisputeEmailShell(opts: {
   badgeText: string;
   badgeGradient: string;
@@ -388,7 +444,13 @@ function marketplaceDisputeEmailShell(opts: {
   nextSteps: string;
   supportLine: string;
   url: string;
+  tagline?: string;
+  footerLabel?: string;
+  ctaLabel?: string;
 }) {
+  const tagline = opts.tagline || 'Your Link Building Marketplace';
+  const footerLabel = opts.footerLabel || 'LinkWatcher Marketplace';
+  const ctaLabel = opts.ctaLabel || 'View Order Details';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -420,7 +482,7 @@ function marketplaceDisputeEmailShell(opts: {
                 <div class="logo-container">
                     <img src="${LW_PRO_EMAIL_LOGO}" alt="LinkWatcher" class="logo">
                 </div>
-                <div class="tagline">Your Link Building Marketplace</div>
+                <div class="tagline">${tagline}</div>
                 <div class="welcome-badge">${opts.badgeText}</div>
             </div>
             <div class="content">
@@ -435,12 +497,12 @@ function marketplaceDisputeEmailShell(opts: {
                 <p class="main-text">${opts.nextSteps}</p>
                 <p class="main-text">${opts.supportLine}</p>
                 <div class="cta-section">
-                    <a href="${opts.url}" class="cta-button">View Order Details</a>
+                    <a href="${opts.url}" class="cta-button">${ctaLabel}</a>
                 </div>
             </div>
             <div class="footer">
                 Need help? Contact us at support@linkwatcher.io<br>
-                LinkWatcher Marketplace &middot; <a href="https://app.linkwatcher.io" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
+                ${footerLabel} &middot; <a href="https://app.linkwatcher.io" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
             </div>
         </div>
     </div>

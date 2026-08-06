@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { sendTrueEmailer, formatAccountUnsuspendedEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +29,25 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error unsuspending user:', error);
       throw error;
+    }
+
+    // Notify the user their account was reactivated.
+    // Best-effort: a mail failure must not fail the unsuspension.
+    if (data?.email) {
+      try {
+        await sendTrueEmailer({
+          to: [{ email: data.email, name: data.fullName || undefined }],
+          subject: 'Your Linkwatcher account has been reactivated',
+          senderName: 'Linkwatcher Compliance',
+          senderEmail: 'compliance@linkwatcher.io',
+          replyTo: 'support@linkwatcher.io',
+          htmlContent: formatAccountUnsuspendedEmail({
+            fullName: data.fullName,
+          }),
+        });
+      } catch (mailErr) {
+        console.error('Unsuspension email notification failed (non-blocking):', mailErr);
+      }
     }
 
     return NextResponse.json({
