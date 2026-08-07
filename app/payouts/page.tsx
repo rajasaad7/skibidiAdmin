@@ -102,6 +102,7 @@ interface Payout {
   payoutFee?: number | null;
   amountReceived?: string | number | null;
   kycTasks?: KycTask[];
+  disputedOrders?: string[];
   user?: {
     _id: string;
     email: string;
@@ -491,8 +492,22 @@ export default function PayoutsPage() {
                     payouts.map((payout) => (
                       <tr key={payout._id} className="hover:bg-gray-50">
                         <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {payout.user?.fullName || 'Unknown'}
+                          <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                            <span>{payout.user?.fullName || 'Unknown'}</span>
+                            {(payout.disputedOrders?.length ?? 0) > 0 && (
+                              <span className="relative group inline-flex">
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-red-100 cursor-default" />
+                                <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block z-20 w-max max-w-xs px-3 py-2 rounded-lg bg-gray-900 text-white text-xs font-normal shadow-lg">
+                                  <span className="block font-semibold text-red-300 mb-0.5">
+                                    Disputed order{payout.disputedOrders!.length > 1 ? 's' : ''}
+                                  </span>
+                                  {payout.disputedOrders!.map((orderNumber) => (
+                                    <span key={orderNumber} className="block">{orderNumber}</span>
+                                  ))}
+                                  <span className="absolute left-1/2 -translate-x-1/2 top-full border-4 border-transparent border-t-gray-900" />
+                                </span>
+                              </span>
+                            )}
                           </div>
                           <div className="text-sm text-gray-600">{payout.user?.email || 'N/A'}</div>
                         </td>

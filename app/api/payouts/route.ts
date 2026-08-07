@@ -68,6 +68,23 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    // Disputed orders per publisher: a payout from a publisher with an open dispute
+    // gets flagged in the list so the admin holds it until the dispute settles.
+    const publisherIds = Array.from(new Set((data || []).map((p) => p.userId).filter(Boolean)));
+    const disputedByPublisher = new Map<string, string[]>();
+    if (publisherIds.length > 0) {
+      const { data: disputedOrders } = await supabase
+        .from('marketplace_orders')
+        .select('"orderNumber", "publisherId"')
+        .in('publisherId', publisherIds)
+        .eq('status', 'disputed');
+      for (const order of disputedOrders || []) {
+        const list = disputedByPublisher.get(order.publisherId) || [];
+        list.push(order.orderNumber);
+        disputedByPublisher.set(order.publisherId, list);
+      }
+    }
+
     // Fetch user data + linked payout method for each payout and calculate amountReceived
     const payoutsWithUsers = await Promise.all(
       (data || []).map(async (payout) => {
@@ -106,6 +123,7 @@ export async function GET(request: NextRequest) {
           user: userData,
           payoutMethod,
           kycTasks,
+          disputedOrders: disputedByPublisher.get(payout.userId) || [],
           amountReceived: amountReceived.toFixed(2)
         };
       })
