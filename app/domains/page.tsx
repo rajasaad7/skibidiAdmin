@@ -91,6 +91,13 @@ export default function DomainsPage() {
     approved: number;
     total: number;
   } | null>(null);
+  const [rejectingNoTrafficOfferings, setRejectingNoTrafficOfferings] = useState(false);
+  const [rejectNoTrafficProgress, setRejectNoTrafficProgress] = useState<{
+    phase: string;
+    scanned: number;
+    rejected: number;
+    total: number;
+  } | null>(null);
   const [uploadResult, setUploadResult] = useState<{ success: boolean; updatedCount: number; errors?: string[]; totalProcessed: number } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'file' | 'paste'>('file');
@@ -405,6 +412,103 @@ export default function DomainsPage() {
         } finally {
           setApprovingTrafficOfferings(false);
           setApproveProgress(null);
+        }
+      }
+    });
+  };
+
+  const handleRejectAllNoTraffic = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Reject Pending Offerings (0 Traffic)',
+      message: 'Reject all pending offerings whose domain has 0 organic traffic AND at least 2 of DA / DR / Spam Score above 0? Domains with unfetched (N/A) stats are never touched. Rejection reason will be "No / low organic traffic". This cannot be undone in bulk.',
+      confirmText: 'Reject',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setRejectingNoTrafficOfferings(true);
+        setRejectNoTrafficProgress({ phase: 'scanning', scanned: 0, rejected: 0, total: 0 });
+        try {
+          const response = await fetch('/api/domains/reject-pending-no-traffic', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+
+          if (!response.ok || !response.body) {
+            throw new Error('Failed to start rejection');
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          const outcome: { result: { count: number; domainCount: number } | null; error: string | null } = {
+            result: null,
+            error: null
+          };
+
+          const handleEvent = (evt: any) => {
+            if (evt.type === 'scan') {
+              setRejectNoTrafficProgress((prev) => ({
+                phase: 'scanning',
+                scanned: evt.scanned,
+                rejected: prev?.rejected || 0,
+                total: prev?.total || 0
+              }));
+            } else if (evt.type === 'phase') {
+              setRejectNoTrafficProgress((prev) => ({
+                phase: evt.phase,
+                scanned: prev?.scanned || 0,
+                rejected: prev?.rejected || 0,
+                total: evt.total ?? prev?.total ?? 0
+              }));
+            } else if (evt.type === 'progress') {
+              setRejectNoTrafficProgress((prev) => ({
+                phase: 'rejecting',
+                scanned: prev?.scanned || 0,
+                rejected: evt.rejected,
+                total: evt.total
+              }));
+            } else if (evt.type === 'done') {
+              outcome.result = { count: evt.count, domainCount: evt.domainCount };
+            } else if (evt.type === 'error') {
+              outcome.error = evt.error;
+            }
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              if (line.trim()) handleEvent(JSON.parse(line));
+            }
+          }
+          if (buffer.trim()) handleEvent(JSON.parse(buffer));
+
+          if (outcome.error) throw new Error(outcome.error);
+
+          const result = outcome.result;
+          setAlertModal({
+            isOpen: true,
+            title: 'Success',
+            message: result && result.count > 0
+              ? `Rejected ${result.count} pending offering(s) across ${result.domainCount} zero-traffic domain(s) as "No / low organic traffic".`
+              : 'No pending offerings matched (0 traffic with at least 2 of DA/DR/SS above 0).',
+            type: 'success'
+          });
+          fetchDomains();
+        } catch (error: any) {
+          console.error('Error rejecting zero-traffic offerings:', error);
+          setAlertModal({
+            isOpen: true,
+            title: 'Error',
+            message: error?.message || 'Error rejecting offerings',
+            type: 'error'
+          });
+        } finally {
+          setRejectingNoTrafficOfferings(false);
+          setRejectNoTrafficProgress(null);
         }
       }
     });
@@ -3146,6 +3250,24 @@ export default function DomainsPage() {
                 ? `Approving ${approveProgress?.approved ?? 0}/${approveProgress?.total ?? 0}...`
                 : 'Scanning...'
               : 'Approve Pending (Traffic > 0)'}
+          </button>
+
+          {/* Reject all pending offerings with 0 traffic but real stats (>=2 of DA/DR/SS > 0) */}
+          <button
+            onClick={handleRejectAllNoTraffic}
+            disabled={rejectingNoTrafficOfferings}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {rejectingNoTrafficOfferings ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <XCircle className="w-4 h-4" />
+            )}
+            {rejectingNoTrafficOfferings
+              ? rejectNoTrafficProgress?.phase === 'rejecting'
+                ? `Rejecting ${rejectNoTrafficProgress?.rejected ?? 0}/${rejectNoTrafficProgress?.total ?? 0}...`
+                : 'Scanning...'
+              : 'Reject Pending (0 Traffic)'}
           </button>
 
           {/* N/A Stats Dropdown */}
