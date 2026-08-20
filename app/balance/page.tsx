@@ -1,7 +1,38 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Wallet, TrendingUp, User, AlertCircle, RotateCcw, ShoppingCart, Plus, Trash2, Check, X, Pencil, Send } from 'lucide-react';
+import { Wallet, TrendingUp, User, AlertCircle, RotateCcw, ShoppingCart, Plus, Trash2, Check, X, Pencil, Send, Loader2, CheckCircle2 } from 'lucide-react';
+
+interface CreditLookupUser {
+  _id: string;
+  email: string;
+  fullName: string | null;
+  isSuspended: boolean;
+  balance: number;
+  totalAdded: number;
+}
+
+interface CreditResult {
+  alreadyApplied: boolean;
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  user: { _id: string; email: string; fullName: string | null };
+}
+
+const CREDIT_METHODS = [
+  { value: 'bank_transfer', label: 'Bank transfer' },
+  { value: 'paypal', label: 'PayPal (manual)' },
+  { value: 'crypto', label: 'Crypto (manual)' },
+  { value: 'other', label: 'Other' },
+];
+
+// One id per modal open: the credit API is idempotent on it, so a double-click
+// or a retried request can never credit the same payment twice.
+const newRequestId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 interface BuyerBalance {
   _id: string;
@@ -95,6 +126,108 @@ export default function BalancePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPlatform, setEditPlatform] = useState('');
   const [editAmount, setEditAmount] = useState('');
+
+  // Add-balance (manual credit) modal state
+  const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [creditRequestId, setCreditRequestId] = useState('');
+  const [creditUserInput, setCreditUserInput] = useState('');
+  const [creditLookup, setCreditLookup] = useState<CreditLookupUser | null>(null);
+  const [creditLookupLoading, setCreditLookupLoading] = useState(false);
+  const [creditLookupError, setCreditLookupError] = useState('');
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditMethod, setCreditMethod] = useState('bank_transfer');
+  const [creditReference, setCreditReference] = useState('');
+  const [creditNote, setCreditNote] = useState('');
+  const [creditSubmitting, setCreditSubmitting] = useState(false);
+  const [creditError, setCreditError] = useState('');
+  const [creditResult, setCreditResult] = useState<CreditResult | null>(null);
+
+  const openCreditModal = (prefillUser?: { email: string }) => {
+    setCreditRequestId(newRequestId());
+    setCreditUserInput(prefillUser?.email || '');
+    setCreditLookup(null);
+    setCreditLookupError('');
+    setCreditAmount('');
+    setCreditMethod('bank_transfer');
+    setCreditReference('');
+    setCreditNote('');
+    setCreditError('');
+    setCreditResult(null);
+    setCreditModalOpen(true);
+  };
+
+  const closeCreditModal = () => {
+    if (creditSubmitting) return;
+    setCreditModalOpen(false);
+  };
+
+  // Resolve the typed email / id to a real user (name + current balance) so the
+  // admin confirms the target before money moves. Debounced on input.
+  useEffect(() => {
+    if (!creditModalOpen) return;
+    const q = creditUserInput.trim();
+    setCreditLookup(null);
+    setCreditLookupError('');
+    if (!q || (q.includes('@') ? !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(q) : q.length < 8)) return;
+    let cancelled = false;
+    setCreditLookupLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/balance/credit?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.success) setCreditLookup(data.user);
+        else setCreditLookupError(data.error || 'User not found');
+      } catch {
+        if (!cancelled) setCreditLookupError('Lookup failed, try again');
+      } finally {
+        if (!cancelled) setCreditLookupLoading(false);
+      }
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [creditUserInput, creditModalOpen]);
+
+  const creditAmountNumber = Number(creditAmount);
+  const creditAmountValid =
+    Number.isFinite(creditAmountNumber) &&
+    creditAmountNumber > 0 &&
+    Math.abs(Math.round(creditAmountNumber * 100) / 100 - creditAmountNumber) < 1e-9;
+  const canSubmitCredit = !!creditLookup && creditAmountValid && !creditSubmitting && !creditResult;
+
+  const submitCredit = async () => {
+    if (!canSubmitCredit || !creditLookup) return;
+    setCreditSubmitting(true);
+    setCreditError('');
+    try {
+      const response = await fetch('/api/balance/credit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: creditLookup._id,
+          amount: creditAmountNumber,
+          method: creditMethod,
+          reference: creditReference.trim(),
+          note: creditNote.trim(),
+          requestId: creditRequestId,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCreditResult(data);
+        await fetchBuyers();
+      } else {
+        setCreditError(data.error || 'Failed to add balance');
+      }
+    } catch (error) {
+      console.error('Error adding balance:', error);
+      setCreditError('Network error, the credit was NOT confirmed. Reopen the modal and retry.');
+    } finally {
+      setCreditSubmitting(false);
+    }
+  };
 
   const fetchBuyers = async () => {
     setBuyersLoading(true);
@@ -362,8 +495,8 @@ export default function BalancePage() {
             </div>
           </div>
 
-          {/* Search */}
-          <div className="mb-6">
+          {/* Search + Add Balance */}
+          <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
             <input
               type="text"
               value={search}
@@ -371,6 +504,12 @@ export default function BalancePage() {
               placeholder="Search by name or email..."
               className="w-full md:w-96 px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
+            <button
+              onClick={() => openCreditModal()}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg sm:ml-auto"
+            >
+              <Plus className="w-4 h-4" /> Add Balance
+            </button>
           </div>
 
           {/* Buyers Balance Table */}
@@ -434,7 +573,16 @@ export default function BalancePage() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <span className="font-bold text-gray-900">${buyer.totalBalance.toFixed(2)}</span>
+                          <div className="inline-flex items-center gap-2">
+                            <span className="font-bold text-gray-900">${buyer.totalBalance.toFixed(2)}</span>
+                            <button
+                              onClick={() => openCreditModal({ email: buyer.email })}
+                              title="Add balance to this buyer"
+                              className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -443,6 +591,198 @@ export default function BalancePage() {
               </table>
             </div>
           </div>
+
+          {/* Add Balance modal (manual credit for off-platform payments) */}
+          {creditModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[92vh] overflow-y-auto">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Add Balance</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Credit a buyer&apos;s wallet for a payment made outside the app</p>
+                  </div>
+                  <button
+                    onClick={closeCreditModal}
+                    disabled={creditSubmitting}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {creditResult ? (
+                  <div className="px-6 py-6">
+                    <div className="flex items-start gap-3 p-4 rounded-lg bg-green-50 border border-green-200">
+                      <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 shrink-0" />
+                      <div className="text-sm">
+                        <p className="font-semibold text-green-800">
+                          {creditResult.alreadyApplied ? 'Already credited (no double charge)' : 'Balance added'}
+                        </p>
+                        <p className="text-green-700 mt-1">
+                          <span className="font-semibold">${creditResult.amount.toFixed(2)}</span> credited to{' '}
+                          <span className="font-medium">{creditResult.user.fullName || creditResult.user.email}</span>
+                          {creditResult.user.fullName ? ` (${creditResult.user.email})` : ''}
+                        </p>
+                        <p className="text-green-700 mt-1">
+                          Wallet: ${creditResult.balanceBefore.toFixed(2)} → ${creditResult.balanceAfter.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-green-700/80 mt-2">
+                          The buyer sees this as a green &quot;Balance top-up&quot; row on their Balance page.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-3 mt-5">
+                      <button
+                        onClick={() => openCreditModal()}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg"
+                      >
+                        Add another
+                      </button>
+                      <button
+                        onClick={() => setCreditModalOpen(false)}
+                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="px-6 py-5 space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Buyer email or user id</label>
+                        <input
+                          type="text"
+                          autoFocus
+                          value={creditUserInput}
+                          onChange={(e) => setCreditUserInput(e.target.value)}
+                          placeholder="buyer@example.com"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <div className="mt-2 min-h-[2.5rem]">
+                          {creditLookupLoading ? (
+                            <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Looking up user...
+                            </p>
+                          ) : creditLookupError ? (
+                            <p className="text-xs text-red-600">{creditLookupError}</p>
+                          ) : creditLookup ? (
+                            <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 border border-gray-200">
+                              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center shrink-0">
+                                <User className="w-4 h-4 text-blue-600" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {creditLookup.fullName || 'Unnamed user'}
+                                  {creditLookup.isSuspended && (
+                                    <span className="ml-2 text-[11px] font-semibold text-red-600 uppercase">Suspended</span>
+                                  )}
+                                </p>
+                                <p className="text-xs text-gray-500 truncate">{creditLookup.email}</p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-[11px] text-gray-500">Current wallet</p>
+                                <p className="text-sm font-semibold text-gray-900">${creditLookup.balance.toFixed(2)}</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400">Type the full email to find the buyer.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount (USD)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            value={creditAmount}
+                            onChange={(e) => setCreditAmount(e.target.value)}
+                            placeholder="500.00"
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          {creditAmount && !creditAmountValid && (
+                            <p className="text-xs text-red-600 mt-1">Enter a positive amount with up to 2 decimals.</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1.5">Received via</label>
+                          <select
+                            value={creditMethod}
+                            onChange={(e) => setCreditMethod(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            {CREDIT_METHODS.map((m) => (
+                              <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Payment reference <span className="text-gray-400 font-normal">(optional, shown to the buyer)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={creditReference}
+                          onChange={(e) => setCreditReference(e.target.value)}
+                          placeholder="Bank transaction id / PayPal txn"
+                          maxLength={200}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Internal note <span className="text-gray-400 font-normal">(optional, admin only)</span>
+                        </label>
+                        <textarea
+                          value={creditNote}
+                          onChange={(e) => setCreditNote(e.target.value)}
+                          rows={2}
+                          maxLength={500}
+                          placeholder="e.g. Wire received 20 Aug, matched to invoice request"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                        />
+                      </div>
+
+                      {creditLookup && creditAmountValid && (
+                        <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                          You are about to credit <span className="font-semibold">${creditAmountNumber.toFixed(2)}</span> to{' '}
+                          <span className="font-semibold">{creditLookup.email}</span>. New wallet balance will be{' '}
+                          <span className="font-semibold">${(creditLookup.balance + creditAmountNumber).toFixed(2)}</span>. This cannot be undone from here.
+                        </div>
+                      )}
+
+                      {creditError && (
+                        <p className="text-sm text-red-600">{creditError}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200">
+                      <button
+                        onClick={closeCreditModal}
+                        disabled={creditSubmitting}
+                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={submitCredit}
+                        disabled={!canSubmitCredit}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                      >
+                        {creditSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
+                        {creditSubmitting ? 'Adding...' : 'Add Balance'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </>
       ) : tab === 'publishers' ? (
         <>
