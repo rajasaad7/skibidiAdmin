@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Wallet, TrendingUp, User, AlertCircle, RotateCcw, ShoppingCart, Plus, Trash2, Check, X, Pencil, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { Wallet, TrendingUp, User, AlertCircle, RotateCcw, ShoppingCart, Plus, Trash2, Check, X, Pencil, Send, Loader2, CheckCircle2, ChevronDown } from 'lucide-react';
 
 interface CreditLookupUser {
   _id: string;
@@ -709,15 +709,18 @@ export default function BalancePage() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1.5">Received via</label>
-                          <select
-                            value={creditMethod}
-                            onChange={(e) => setCreditMethod(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            {CREDIT_METHODS.map((m) => (
-                              <option key={m.value} value={m.value}>{m.label}</option>
-                            ))}
-                          </select>
+                          <div className="relative">
+                            <select
+                              value={creditMethod}
+                              onChange={(e) => setCreditMethod(e.target.value)}
+                              className="appearance-none w-full pl-3 pr-9 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer"
+                            >
+                              {CREDIT_METHODS.map((m) => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                              ))}
+                            </select>
+                            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          </div>
                         </div>
                       </div>
 
