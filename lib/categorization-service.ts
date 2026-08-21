@@ -559,11 +559,12 @@ ${categoryList}
 Rules:
 - language: ISO 639-1 code of the language the title/description/content are actually written in. The HTML lang attribute is a hint; the text itself wins if they disagree.
 - country: exactly ONE ISO 3166-1 alpha-2 code, the single primary audience/market the site serves (never a list, never a region). A country-code TLD (.fr, .de, .co.uk ...) is a strong signal, so use it unless the content clearly targets another country. For generic TLDs infer from language, currency, addresses, phone formats or place names; if the audience spans several countries pick the primary one; use "UNKNOWN" if there is no real evidence. Never default to US.
-- prohibitedNiche: if the site's MAIN topic is one of these restricted niches answer with its id, otherwise "none": ${nicheList}. Judge the site as a whole (a news site with one beer article is "none"; a beer blog, casino guide, vape shop or adult site is flagged).
+- prohibitedNiche: the restricted niche the site belongs to, or "none": ${nicheList}.
+- prohibitedNicheScope: "dominant" if that niche is what the site is ABOUT (most of its content, e.g. a beer blog, casino guide, vape shop, adult site); "partial" if the site is a general/news/lifestyle site that merely has some articles touching the niche; "none" otherwise. A general site with a few casino, CBD or vaping articles is "partial", NOT "dominant".
 - confidence: High, Medium or Low.
 
 Return JSON only, exactly this shape (replace the placeholders):
-{"category":"<category name from the list>","language":"<ISO 639-1 code>","country":"<ISO 3166-1 alpha-2 code or UNKNOWN>","prohibitedNiche":"<id or none>","confidence":"<High|Medium|Low>","reason":"<short reason>"}`;
+{"category":"<category name from the list>","language":"<ISO 639-1 code>","country":"<ISO 3166-1 alpha-2 code or UNKNOWN>","prohibitedNiche":"<id or none>","prohibitedNicheScope":"<dominant|partial|none>","confidence":"<High|Medium|Low>","reason":"<short reason>"}`;
 
     // Retry logic for rate limits
     let lastError;
@@ -582,7 +583,7 @@ Return JSON only, exactly this shape (replace the placeholders):
           model: 'openai/gpt-oss-20b',
           reasoning_effort: 'low',
           temperature: 0.2,
-          max_completion_tokens: 350,
+          max_completion_tokens: 400,
         });
 
         const responseText = chatCompletion.choices[0]?.message?.content || '';
@@ -626,10 +627,12 @@ Return JSON only, exactly this shape (replace the placeholders):
         // Prohibited niche: the model's verdict first (it saw the page), the deterministic
         // keyword screen (domain name / category / text) as the floor. Moderation signal only.
         const aiNicheId = String(aiResponse.prohibitedNiche || '').trim().toLowerCase();
+        // only a DOMINANT niche counts: "partial" (a general site with some such articles) is clean
+        const aiNicheDominant = String(aiResponse.prohibitedNicheScope || '').trim().toLowerCase() === 'dominant';
         let prohibitedNiche: string | null = null;
         let prohibitedNicheReason: string | null = null;
         let prohibitedNicheSource: 'ai' | 'keyword' | null = null;
-        if (prohibitedNicheLabel(aiNicheId)) {
+        if (prohibitedNicheLabel(aiNicheId) && aiNicheDominant) {
           prohibitedNiche = aiNicheId;
           prohibitedNicheReason = aiResponse.reason || `Detected as ${prohibitedNicheLabel(aiNicheId)} content`;
           prohibitedNicheSource = 'ai';

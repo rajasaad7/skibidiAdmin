@@ -130,8 +130,10 @@ export function screenProhibitedNiche(input: ScreenInput): ProhibitedNicheVerdic
   const labels = hostLabels(host);
   const labelsJoined = labels.join('.');
   const categoryName = String(input.categoryName || '').toLowerCase();
-  const text = [input.title, input.metaDescription, input.content]
-    .filter(Boolean).join(' \n ').toLowerCase().slice(0, 6000);
+  // headline = what the site says it IS (title + meta); content = a homepage text sample,
+  // which on a general news/lifestyle site legitimately mentions anything once.
+  const headline = [input.title, input.metaDescription].filter(Boolean).join(' \n ').toLowerCase().slice(0, 1000);
+  const content = String(input.content || '').toLowerCase().slice(0, 6000);
   const listing = String(input.listingDescription || '').toLowerCase().slice(0, 2000);
 
   let best: { niche: ProhibitedNicheDef; score: number; matches: string[] } | null = null;
@@ -155,25 +157,38 @@ export function screenProhibitedNiche(input: ScreenInput): ProhibitedNicheVerdic
       if (catHit) { matches.push(`category:${catHit}`); score += 3; }
     }
 
-    // 3. Page / listing text: one strong phrase, or two distinct weak ones
-    if (text) {
-      const strongHits = (niche.strong || []).filter(k => phraseRe(k).test(text));
-      const weakHits = (niche.weak || []).filter(k => phraseRe(k).test(text));
-      // weak words alone need 3 distinct hits (a food blog mentioning wine + cocktails is not
-      // an alcohol site); 2 are enough once the domain name or category already scored
-      const weakNeeded = score > 0 ? 2 : 3;
-      if (strongHits.length) { matches.push(...strongHits.slice(0, 3).map(k => `text:${k}`)); score += 2 + Math.min(strongHits.length, 3); }
-      if (weakHits.length >= weakNeeded) { matches.push(...weakHits.slice(0, 3).map(k => `text:${k}`)); score += Math.min(weakHits.length, 4); }
-      else if (weakHits.length >= 1 && score > 0) { matches.push(`text:${weakHits[0]}`); score += 1; }
+    // 3. Headline (title + meta): one strong phrase = the site describes itself as that
+    //    niche; two distinct weak words also count, one weak word only corroborates.
+    if (headline) {
+      const strongHits = (niche.strong || []).filter(k => phraseRe(k).test(headline));
+      const weakHits = (niche.weak || []).filter(k => phraseRe(k).test(headline));
+      if (strongHits.length) { matches.push(...strongHits.slice(0, 3).map(k => `title:${k}`)); score += 3; }
+      else if (weakHits.length >= 2) { matches.push(...weakHits.slice(0, 3).map(k => `title:${k}`)); score += 2; }
+      else if (weakHits.length === 1 && score > 0) { matches.push(`title:${weakHits[0]}`); score += 1; }
     }
 
-    // 4. Publisher listing text: corroboration only (needs a domain/category hit first)
+    // 4. Page content: must be SATURATED with the niche to flag on its own (4+ distinct
+    //    strong phrases); fewer hits only corroborate a domain/category/headline signal.
+    //    A news site with one vaping/casino story (even a wordy one) must never flag
+    //    from content alone.
+    if (content) {
+      const strongHits = (niche.strong || []).filter(k => phraseRe(k).test(content));
+      const weakHits = (niche.weak || []).filter(k => phraseRe(k).test(content));
+      if (strongHits.length >= 4) { matches.push(...strongHits.slice(0, 4).map(k => `text:${k}`)); score += 3; }
+      else if (strongHits.length === 3) { matches.push(...strongHits.map(k => `text:${k}`)); score += 2; }
+      else if (strongHits.length >= 1) { matches.push(`text:${strongHits[0]}`); score += 1; }
+      if (weakHits.length >= 3) { matches.push(...weakHits.slice(0, 2).map(k => `text:${k}`)); score += 1; }
+    }
+
+    // 5. Publisher listing text: corroboration only (needs another signal first)
     if (listing && score > 0) {
       const hit = [...(niche.strong || []), ...(niche.weak || [])].find(k => phraseRe(k).test(listing));
       if (hit) { matches.push(`listing:${hit}`); score += 1; }
     }
 
-    if (score >= 2 && (!best || score > best.score)) {
+    // flag threshold: a domain-name token, a category, a headline phrase, or saturated
+    // content each reach 3 on their own; weaker signals must stack
+    if (score >= 3 && (!best || score > best.score)) {
       best = { niche, score, matches };
     }
   }
