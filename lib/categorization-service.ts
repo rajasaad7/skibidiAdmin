@@ -551,7 +551,7 @@ ${categoryList}
 
 Rules:
 - language: ISO 639-1 code of the language the title/description/content are actually written in. The HTML lang attribute is a hint; the text itself wins if they disagree.
-- country: ISO 3166-1 alpha-2 code of the audience/market the site serves. A country-code TLD (.fr, .de, .co.uk ...) is a strong signal, so use it unless the content clearly targets another country. For generic TLDs infer from language, currency, addresses, phone formats or place names; use "UNKNOWN" if there is no real evidence. Never default to US.
+- country: exactly ONE ISO 3166-1 alpha-2 code, the single primary audience/market the site serves (never a list, never a region). A country-code TLD (.fr, .de, .co.uk ...) is a strong signal, so use it unless the content clearly targets another country. For generic TLDs infer from language, currency, addresses, phone formats or place names; if the audience spans several countries pick the primary one; use "UNKNOWN" if there is no real evidence. Never default to US.
 - confidence: High, Medium or Low.
 
 Return JSON only, exactly this shape (replace the placeholders):
@@ -600,14 +600,20 @@ Return JSON only, exactly this shape (replace the placeholders):
         // Country: a real country-code TLD wins over the model unless the model
         // disagrees with High confidence AND actually saw page content. This keeps
         // .fr/.de/... sites from being filed under an invented default country.
-        let countryCode: string | null = String(aiResponse.country || '').toUpperCase() || null;
-        if (countryCode === 'UNKNOWN') countryCode = null;
+        // No evidence at all (UNKNOWN / empty / unmapped code) resolves to the
+        // platform's neutral value "Others" so stale guesses never survive a re-run.
+        // Exactly one country per domain: take the FIRST valid alpha-2 code even if the
+        // model answered with a list ("IN/US", "IN, US") or a name ("India (IN)").
+        const countryRaw = String(aiResponse.country || '').toUpperCase();
+        let countryCode: string | null = countryRaw === 'UNKNOWN'
+          ? null
+          : (countryRaw.match(/\b[A-Z]{2}\b/g) || []).find(code => !!countryMap[code]) || null;
         if (tldCountry) {
           const modelOverrides = countryCode && countryCode !== tldCountry
             && aiResponse.confidence === 'High' && content.length > 0;
           if (!modelOverrides) countryCode = tldCountry;
         }
-        const countryFullName = countryCode ? (countryMap[countryCode] || 'Others') : null;
+        const countryFullName = (countryCode && countryMap[countryCode]) || 'Others';
 
         return {
           domainName,
