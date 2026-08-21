@@ -108,6 +108,10 @@ export async function GET(request: NextRequest) {
           isActive,
           isFeatured,
           editHistory,
+          prohibitedNiche,
+          prohibitedNicheReason,
+          prohibitedNicheSource,
+          prohibitedNicheDetectedAt,
           domain_categories(name)
         `)
         .in('_id', domainIds)
@@ -142,6 +146,10 @@ export async function GET(request: NextRequest) {
           isActive,
           isFeatured,
           editHistory,
+          prohibitedNiche,
+          prohibitedNicheReason,
+          prohibitedNicheSource,
+          prohibitedNicheDetectedAt,
           domain_categories(name)
         `);
 

@@ -75,6 +75,20 @@ export async function POST(request: NextRequest) {
             updateData.country = result.suggestedCountry;
           }
 
+          // Prohibited-niche moderation flag: written on every successful run so a re-run
+          // also clears a stale flag (never auto-rejects; the domains page marks it red).
+          if (result.prohibitedNiche) {
+            updateData.prohibitedNiche = result.prohibitedNiche;
+            updateData.prohibitedNicheReason = (result.prohibitedNicheReason || '').slice(0, 500) || null;
+            updateData.prohibitedNicheSource = result.prohibitedNicheSource || 'ai';
+            updateData.prohibitedNicheDetectedAt = new Date().toISOString();
+          } else {
+            updateData.prohibitedNiche = null;
+            updateData.prohibitedNicheReason = null;
+            updateData.prohibitedNicheSource = null;
+            updateData.prohibitedNicheDetectedAt = null;
+          }
+
           const { error: updateError } = await supabase
             .from('domains')
             .update(updateData)

@@ -62,7 +62,9 @@ export async function POST() {
             .from('domains')
             .select('_id')
             .in('_id', batch)
-            .gt('"organicTraffic"', 0);
+            .gt('"organicTraffic"', 0)
+            // never auto-approve a domain flagged as a prohibited niche (moderator decides)
+            .is('"prohibitedNiche"', null);
 
           if (error) {
             throw new Error(`Fetch domains error: ${error.message}`);

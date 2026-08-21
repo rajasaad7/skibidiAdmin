@@ -1,4 +1,5 @@
 import Groq from 'groq-sdk';
+import { PROHIBITED_NICHES, prohibitedNicheLabel, screenProhibitedNiche } from '@/lib/prohibited-niches';
 
 // Initialize Groq client
 const groq = new Groq({
@@ -22,6 +23,11 @@ interface CategorizationResult {
   categoryId: string | null;
   suggestedLanguage: string | null;
   suggestedCountry: string | null;
+  /** Restricted-niche id (see lib/prohibited-niches.ts) or null when the site is clean */
+  prohibitedNiche: string | null;
+  prohibitedNicheReason: string | null;
+  /** 'ai' when the model flagged it, 'keyword' when only the deterministic screen did */
+  prohibitedNicheSource: 'ai' | 'keyword' | null;
   confidence: string;
   reason: string;
   error?: string;
@@ -537,6 +543,7 @@ async function categorizeDomainWithAI(
 
     const tldCountry = countryCodeFromTld(domainName);
     const declaredLang = primaryLanguageCode(htmlLang);
+    const nicheList = PROHIBITED_NICHES.map(n => `${n.id} (${n.label})`).join(', ');
 
     const prompt = `Categorize this website and detect its language and country.
 Domain: ${domainName}
@@ -552,10 +559,11 @@ ${categoryList}
 Rules:
 - language: ISO 639-1 code of the language the title/description/content are actually written in. The HTML lang attribute is a hint; the text itself wins if they disagree.
 - country: exactly ONE ISO 3166-1 alpha-2 code, the single primary audience/market the site serves (never a list, never a region). A country-code TLD (.fr, .de, .co.uk ...) is a strong signal, so use it unless the content clearly targets another country. For generic TLDs infer from language, currency, addresses, phone formats or place names; if the audience spans several countries pick the primary one; use "UNKNOWN" if there is no real evidence. Never default to US.
+- prohibitedNiche: if the site's MAIN topic is one of these restricted niches answer with its id, otherwise "none": ${nicheList}. Judge the site as a whole (a news site with one beer article is "none"; a beer blog, casino guide, vape shop or adult site is flagged).
 - confidence: High, Medium or Low.
 
 Return JSON only, exactly this shape (replace the placeholders):
-{"category":"<category name from the list>","language":"<ISO 639-1 code>","country":"<ISO 3166-1 alpha-2 code or UNKNOWN>","confidence":"<High|Medium|Low>","reason":"<short reason>"}`;
+{"category":"<category name from the list>","language":"<ISO 639-1 code>","country":"<ISO 3166-1 alpha-2 code or UNKNOWN>","prohibitedNiche":"<id or none>","confidence":"<High|Medium|Low>","reason":"<short reason>"}`;
 
     // Retry logic for rate limits
     let lastError;
@@ -574,7 +582,7 @@ Return JSON only, exactly this shape (replace the placeholders):
           model: 'openai/gpt-oss-20b',
           reasoning_effort: 'low',
           temperature: 0.2,
-          max_completion_tokens: 300,
+          max_completion_tokens: 350,
         });
 
         const responseText = chatCompletion.choices[0]?.message?.content || '';
@@ -615,12 +623,41 @@ Return JSON only, exactly this shape (replace the placeholders):
         }
         const countryFullName = (countryCode && countryMap[countryCode]) || 'Others';
 
+        // Prohibited niche: the model's verdict first (it saw the page), the deterministic
+        // keyword screen (domain name / category / text) as the floor. Moderation signal only.
+        const aiNicheId = String(aiResponse.prohibitedNiche || '').trim().toLowerCase();
+        let prohibitedNiche: string | null = null;
+        let prohibitedNicheReason: string | null = null;
+        let prohibitedNicheSource: 'ai' | 'keyword' | null = null;
+        if (prohibitedNicheLabel(aiNicheId)) {
+          prohibitedNiche = aiNicheId;
+          prohibitedNicheReason = aiResponse.reason || `Detected as ${prohibitedNicheLabel(aiNicheId)} content`;
+          prohibitedNicheSource = 'ai';
+        } else {
+          const screened = screenProhibitedNiche({
+            domainName,
+            categoryName: aiResponse.category,
+            title,
+            metaDescription,
+            content,
+            listingDescription: domainDescription || '',
+          });
+          if (screened) {
+            prohibitedNiche = screened.id;
+            prohibitedNicheReason = screened.reason;
+            prohibitedNicheSource = 'keyword';
+          }
+        }
+
         return {
           domainName,
           suggestedCategory: aiResponse.category,
           categoryId: matchedCategory?._id || null,
           suggestedLanguage: languageFullName,
           suggestedCountry: countryFullName,
+          prohibitedNiche,
+          prohibitedNicheReason,
+          prohibitedNicheSource,
           confidence: aiResponse.confidence,
           reason: aiResponse.reason,
         };
@@ -652,6 +689,9 @@ Return JSON only, exactly this shape (replace the placeholders):
       categoryId: null,
       suggestedLanguage: null,
       suggestedCountry: null,
+      prohibitedNiche: null,
+      prohibitedNicheReason: null,
+      prohibitedNicheSource: null,
       confidence: 'Low',
       reason: 'Error during categorization',
       error: error.message,

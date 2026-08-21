@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, X, Edit, Sparkles, ChevronDown, Upload, Minimize2, Maximize2 } from 'lucide-react';
+import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, AlertTriangle, X, Edit, Sparkles, ChevronDown, Upload, Minimize2, Maximize2 } from 'lucide-react';
+import { prohibitedNicheLabel } from '@/lib/prohibited-niches';
 import OfferingModal from '@/components/OfferingModal';
 import DomainEditModal from '@/components/DomainEditModal';
 
@@ -52,6 +53,10 @@ interface Domain {
   isFeatured: boolean;
   domainType: string;
   createdAt: string;
+  prohibitedNiche?: string | null;
+  prohibitedNicheReason?: string | null;
+  prohibitedNicheSource?: string | null;
+  prohibitedNicheDetectedAt?: string | null;
   publisherOfferings: PublisherOffering[];
   totalOfferings: number;
   pendingOfferings: number;
@@ -72,7 +77,7 @@ export default function DomainsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
-  const [stats, setStats] = useState({ total: 0, pending: 0, rejected: 0, domainsWithOwner: 0, domainsWithReseller: 0, uncategorized: 0, updateRequests: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, rejected: 0, domainsWithOwner: 0, domainsWithReseller: 0, uncategorized: 0, updateRequests: 0, prohibited: 0 });
   const [showUncategorized, setShowUncategorized] = useState(false);
   const [editingSEO, setEditingSEO] = useState<string | null>(null);
   const [seoMetrics, setSeoMetrics] = useState({ domainRating: '', domainAuthority: '', spamScore: '', organicTraffic: '' });
@@ -231,7 +236,7 @@ export default function DomainsPage() {
     try {
       // Fetch filtered domains for display
       const params = new URLSearchParams();
-      if (filter !== 'all' && filter !== 'with_owner' && filter !== 'reseller_only' && filter !== 'update_requests') {
+      if (filter !== 'all' && filter !== 'update_requests') {
         params.append('status', filter);
       }
       if (filter === 'update_requests') {
@@ -623,23 +628,8 @@ export default function DomainsPage() {
     }
   };
 
-  const getFilteredDomains = () => {
-    let filtered = domains;
-
-    // Apply owner/reseller filters client-side
-    if (filter === 'with_owner') {
-      filtered = filtered.filter(domain =>
-        domain.publisherOfferings.some(o => o.domainType === 'owner')
-      );
-    } else if (filter === 'reseller_only') {
-      filtered = filtered.filter(domain =>
-        domain.publisherOfferings.some(o => o.domainType === 'reseller') &&
-        !domain.publisherOfferings.some(o => o.domainType === 'owner')
-      );
-    }
-
-    return filtered;
-  };
+  // All filters (status, prohibited, update requests, uncategorized) are applied server-side
+  const getFilteredDomains = () => domains;
 
   const toggleSelectDomain = (domainId: string) => {
     setSelectedDomains(prev => {
@@ -668,7 +658,7 @@ export default function DomainsPage() {
       const params = new URLSearchParams();
 
       // Note: with_owner and reseller_only filters need special handling since they're client-side
-      if (filter !== 'all' && filter !== 'with_owner' && filter !== 'reseller_only' && filter !== 'update_requests') {
+      if (filter !== 'all' && filter !== 'update_requests') {
         params.append('status', filter);
       }
       if (filter === 'update_requests') {
@@ -3426,7 +3416,7 @@ export default function DomainsPage() {
       )}
 
       {/* Stats Cards - Now Clickable Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
         <button
           onClick={() => setFilter('all')}
           className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
@@ -3464,22 +3454,17 @@ export default function DomainsPage() {
           <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
         </button>
         <button
-          onClick={() => setFilter('with_owner')}
-          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
-            filter === 'with_owner' ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
+          onClick={() => setFilter('prohibited')}
+          title="Domains detected as a restricted niche (gambling, adult, CBD, alcohol, vaping, pharma, weapons). Review and reject."
+          className={`rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
+            filter === 'prohibited' ? 'bg-red-50 border-red-500 ring-2 ring-red-200' : 'bg-white border-red-200'
           }`}
         >
-          <div className="text-sm text-gray-600 mb-1">With Owner</div>
-          <div className="text-2xl font-bold text-blue-600">{stats.domainsWithOwner}</div>
-        </button>
-        <button
-          onClick={() => setFilter('reseller_only')}
-          className={`bg-white rounded-lg shadow-sm p-4 border-2 transition hover:shadow-md text-left ${
-            filter === 'reseller_only' ? 'border-purple-500 ring-2 ring-purple-200' : 'border-gray-200'
-          }`}
-        >
-          <div className="text-sm text-gray-600 mb-1">Reseller Only</div>
-          <div className="text-2xl font-bold text-purple-600">{stats.domainsWithReseller}</div>
+          <div className="text-sm text-red-700 mb-1 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Prohibited Niche
+          </div>
+          <div className="text-2xl font-bold text-red-600">{stats.prohibited}</div>
         </button>
         <button
           onClick={() => {
@@ -3771,8 +3756,8 @@ export default function DomainsPage() {
             <div className="divide-y divide-gray-200 overflow-visible">
               {getFilteredDomains().map((domain) => (
             <div key={domain._id}>
-              {/* Domain Row */}
-              <div className="p-4 hover:bg-gray-50 transition">
+              {/* Domain Row (flagged prohibited-niche domains are marked red for moderators) */}
+              <div className={`p-4 transition ${domain.prohibitedNiche ? 'bg-red-50 hover:bg-red-100 border-l-4 border-red-500' : 'hover:bg-gray-50'}`}>
                 <div className="flex items-center">
                   {/* Checkbox */}
                   <div className="flex-shrink-0 mr-3">
@@ -3786,10 +3771,21 @@ export default function DomainsPage() {
 
                   {/* Domain Name and Category */}
                   <div className="w-64 flex-shrink-0">
-                    <h3 className="text-base font-semibold text-gray-900">{domain.domainName}</h3>
-                    <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700 mt-1">
-                      {domain.domain_categories?.name || 'Uncategorized'}
-                    </span>
+                    <h3 className={`text-base font-semibold ${domain.prohibitedNiche ? 'text-red-700' : 'text-gray-900'}`}>{domain.domainName}</h3>
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700">
+                        {domain.domain_categories?.name || 'Uncategorized'}
+                      </span>
+                      {domain.prohibitedNiche && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded bg-red-600 text-white cursor-help"
+                          title={`${domain.prohibitedNicheReason || 'Detected as a restricted niche'}${domain.prohibitedNicheSource ? ` (source: ${domain.prohibitedNicheSource})` : ''}`}
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          Prohibited: {prohibitedNicheLabel(domain.prohibitedNiche) || domain.prohibitedNiche}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Stats - Centered */}
