@@ -491,6 +491,36 @@ async function fetchDomainMetadata(url: string): Promise<{
   }
 }
 
+// Country-code TLDs that are marketed/used as generic TLDs; they say nothing about
+// the site's country, so we never infer a country from them.
+const GENERIC_USE_CCTLDS = new Set([
+  'tv', 'io', 'co', 'me', 'ai', 'ly', 'cc', 'fm', 'gg', 'to', 'ws', 'nu', 'la', 'sh',
+  'ac', 'st', 'vc', 'so', 'cx', 'tk', 'ml', 'ga', 'cf', 'gq', 'su', 'eu', 'as', 'gs',
+  'ms', 'nf', 'pw', 'tc', 'tl', 'cd', 'dj', 'ki', 'ps', 'sc', 'tm', 'vu', 'bz', 'gl',
+]);
+
+/**
+ * Return the ISO 3166-1 alpha-2 country code implied by the domain's TLD when it is
+ * a real country ccTLD (e.g. ".fr" -> "FR", ".co.uk" -> "GB"); null for gTLDs
+ * (.com/.net/.org) and ccTLDs that are used generically (.tv/.io/.co/...).
+ */
+function countryCodeFromTld(domainName: string): string | null {
+  const host = domainName.toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+  const labels = host.split('.').filter(Boolean);
+  if (labels.length < 2) return null;
+  const tld = labels[labels.length - 1];
+  if (tld.length !== 2 || GENERIC_USE_CCTLDS.has(tld)) return null;
+  if (tld === 'uk') return 'GB';
+  const code = tld.toUpperCase();
+  return countryMap[code] ? code : null;
+}
+
+/** Primary ISO 639-1 subtag of an html lang attribute ("fr-FR" -> "fr"), or null. */
+function primaryLanguageCode(htmlLang: string): string | null {
+  const code = (htmlLang || '').trim().toLowerCase().split(/[-_]/)[0];
+  return code && languageMap[code] ? code : null;
+}
+
 /**
  * Use Groq AI to categorize a domain with retry logic
  */
@@ -505,16 +535,27 @@ async function categorizeDomainWithAI(
   try {
     const categoryList = categories.map(cat => `- ${cat.name}`).join('\n');
 
-    const prompt = `Categorize this domain:
+    const tldCountry = countryCodeFromTld(domainName);
+    const declaredLang = primaryLanguageCode(htmlLang);
+
+    const prompt = `Categorize this website and detect its language and country.
 Domain: ${domainName}
+TLD country hint: ${tldCountry ? `${tldCountry} (country-code TLD, strong signal)` : 'none (generic TLD, infer from content)'}
+HTML lang attribute: ${htmlLang || 'N/A'}
 Title: ${title || 'N/A'}
 Description: ${metaDescription || domainDescription || 'N/A'}
-Content: ${content.substring(0, 200) || 'N/A'}
+Content: ${content.substring(0, 600) || 'N/A'}
 
-Categories: ${categoryList}
+Categories (pick exactly one name from this list):
+${categoryList}
 
-Return JSON only:
-{"category":"Category Name","language":"en","country":"US","confidence":"High","reason":"short reason"}`;
+Rules:
+- language: ISO 639-1 code of the language the title/description/content are actually written in. The HTML lang attribute is a hint; the text itself wins if they disagree.
+- country: ISO 3166-1 alpha-2 code of the audience/market the site serves. A country-code TLD (.fr, .de, .co.uk ...) is a strong signal, so use it unless the content clearly targets another country. For generic TLDs infer from language, currency, addresses, phone formats or place names; use "UNKNOWN" if there is no real evidence. Never default to US.
+- confidence: High, Medium or Low.
+
+Return JSON only, exactly this shape (replace the placeholders):
+{"category":"<category name from the list>","language":"<ISO 639-1 code>","country":"<ISO 3166-1 alpha-2 code or UNKNOWN>","confidence":"<High|Medium|Low>","reason":"<short reason>"}`;
 
     // Retry logic for rate limits
     let lastError;
@@ -551,12 +592,21 @@ Return JSON only:
           cat => cat.name.toLowerCase() === aiResponse.category.toLowerCase()
         );
 
-        // Convert language code to full name
-        const langCode = aiResponse.language?.toLowerCase();
+        // Language: model answer, falling back to the page's declared html lang.
+        let langCode: string | null = String(aiResponse.language || '').toLowerCase().split(/[-_]/)[0] || null;
+        if ((!langCode || !languageMap[langCode]) && declaredLang) langCode = declaredLang;
         const languageFullName = langCode ? (languageMap[langCode] || 'Others') : null;
 
-        // Convert country code to full name
-        const countryCode = aiResponse.country?.toUpperCase();
+        // Country: a real country-code TLD wins over the model unless the model
+        // disagrees with High confidence AND actually saw page content. This keeps
+        // .fr/.de/... sites from being filed under an invented default country.
+        let countryCode: string | null = String(aiResponse.country || '').toUpperCase() || null;
+        if (countryCode === 'UNKNOWN') countryCode = null;
+        if (tldCountry) {
+          const modelOverrides = countryCode && countryCode !== tldCountry
+            && aiResponse.confidence === 'High' && content.length > 0;
+          if (!modelOverrides) countryCode = tldCountry;
+        }
         const countryFullName = countryCode ? (countryMap[countryCode] || 'Others') : null;
 
         return {
