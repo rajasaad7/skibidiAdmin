@@ -527,9 +527,13 @@ Return JSON only:
               content: prompt,
             },
           ],
-          model: 'llama-3.1-8b-instant', // Smallest, fastest, most token-efficient model
+          // Groq retired llama-3.1-8b-instant (Aug 2026). gpt-oss-20b is the small/fast
+          // replacement; low reasoning effort + a wider completion budget so the
+          // reasoning tokens never starve the JSON answer.
+          model: 'openai/gpt-oss-20b',
+          reasoning_effort: 'low',
           temperature: 0.2,
-          max_tokens: 150,
+          max_completion_tokens: 300,
         });
 
         const responseText = chatCompletion.choices[0]?.message?.content || '';
