@@ -1523,13 +1523,29 @@ export default function OrdersPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Published URL
                   </label>
-                  <input
-                    type="url"
-                    value={publishedUrl}
-                    onChange={(e) => setPublishedUrl(e.target.value)}
-                    placeholder="https://example.com/published-article"
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+                  <div className="flex items-stretch gap-2">
+                    <input
+                      type="url"
+                      value={publishedUrl}
+                      onChange={(e) => setPublishedUrl(e.target.value)}
+                      placeholder="https://example.com/published-article"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {publishedUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(publishedUrl);
+                          toast.success('Copied to clipboard!');
+                        }}
+                        title="Copy link"
+                        aria-label="Copy link"
+                        className="flex-shrink-0 px-3 flex items-center justify-center border border-gray-200 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div>
