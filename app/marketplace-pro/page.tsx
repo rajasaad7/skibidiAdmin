@@ -290,7 +290,10 @@ export default function MarketplaceProPage() {
       });
       const json = await res.json();
       if (res.ok) {
-        toast.success(`Synced from Dodo: ${json.remoteStatus} (local: ${json.status})`);
+        const receiptNote = json.receiptsAdded > 0
+          ? `, ${json.receiptsAdded} missing receipt${json.receiptsAdded === 1 ? '' : 's'} added`
+          : '';
+        toast.success(`Synced from Dodo: ${json.remoteStatus} (local: ${json.status})${receiptNote}`);
         fetchSubscriptions();
       } else {
         toast.error(json.error || 'Resync failed');

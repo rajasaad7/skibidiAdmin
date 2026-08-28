@@ -51,6 +51,83 @@ interface LocalSubscription {
   cancelAtPeriodEnd: boolean | null;
 }
 
+interface DodoPayment {
+  payment_id: string;
+  status: string;
+  total_amount?: number | null;
+  currency?: string | null;
+  created_at?: string | null;
+  invoice_id?: string | null;
+  invoice_url?: string | null;
+  subscription_id?: string | null;
+}
+
+// GET {base}/payments?subscription_id=... (shape verified against the Dodo
+// API: items[] of payment_id, status, total_amount (minor units), currency,
+// created_at, invoice_id, invoice_url). Inserts a marketplace_pro_receipts
+// row for every succeeded payment the table does not know yet. Returns the
+// number of rows added; never throws (the status sync already succeeded).
+async function backfillReceipts(
+  baseUrl: string,
+  apiKey: string,
+  sub: LocalSubscription
+): Promise<number> {
+  try {
+    const url = `${baseUrl}/payments?subscription_id=${encodeURIComponent(sub.dodoSubscriptionId as string)}&page_size=100`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000),
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      console.error('Marketplace Pro resync: payments list failed HTTP', res.status);
+      return 0;
+    }
+    const json = (await res.json()) as { items?: DodoPayment[] };
+    const paid = (json.items || []).filter(
+      (p) => p && p.payment_id && p.status === 'succeeded' && typeof p.total_amount === 'number'
+    );
+    if (paid.length === 0) return 0;
+
+    const { data: existing, error: exErr } = await supabase
+      .from('marketplace_pro_receipts')
+      .select('"providerPaymentId"')
+      .eq('provider', 'dodo')
+      .in('providerPaymentId', paid.map((p) => p.payment_id));
+    if (exErr) {
+      console.error('Marketplace Pro resync: receipts lookup failed:', exErr.message);
+      return 0;
+    }
+    const known = new Set((existing || []).map((r: { providerPaymentId: string }) => r.providerPaymentId));
+    const rows = paid
+      .filter((p) => !known.has(p.payment_id))
+      .map((p) => ({
+        userId: sub.userId,
+        subscriptionId: sub._id,
+        provider: 'dodo',
+        providerPaymentId: p.payment_id,
+        providerInvoiceId: p.invoice_id || null,
+        amountMinor: Math.max(0, Math.round(p.total_amount as number)),
+        currency: String(p.currency || 'USD').toUpperCase(),
+        receiptUrl: p.invoice_url || `${baseUrl}/invoices/payments/${p.payment_id}`,
+        paidAt: p.created_at || new Date().toISOString(),
+      }));
+    if (rows.length === 0) return 0;
+
+    const { error: insErr } = await supabase
+      .from('marketplace_pro_receipts')
+      .upsert(rows, { onConflict: 'provider,providerPaymentId', ignoreDuplicates: true });
+    if (insErr) {
+      console.error('Marketplace Pro resync: receipts insert failed:', insErr.message);
+      return 0;
+    }
+    return rows.length;
+  } catch (e) {
+    console.error('Marketplace Pro resync: receipt backfill error:', e);
+    return 0;
+  }
+}
+
 // POST: force-sync a local Dodo subscription row from the Dodo API.
 // Body: { userId } OR { dodoSubscriptionId }. Records a synthetic
 // admin_resync row in marketplace_pro_events for auditability.
@@ -150,6 +227,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: updErr.message }, { status: 500 });
     }
 
+    // Backfill missing receipts from Dodo's payment list for this subscription.
+    // Covers a payment.succeeded webhook that was missed or arrived out of
+    // order (the initial payment of a new sub is stamped 1s BEFORE its
+    // subscription.active event, which used to drop the receipt). Idempotent:
+    // the (provider, providerPaymentId) unique index ignores existing rows.
+    const receiptsAdded = await backfillReceipts(baseUrl, apiKey, sub);
+
     // Synthetic audit event so the resync shows up in the user's event log.
     const { error: eventErr } = await supabase.from('marketplace_pro_events').insert({
       userId: sub.userId,
@@ -165,6 +249,7 @@ export async function POST(request: NextRequest) {
         appliedStatus: mappedStatus || sub.status,
         currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd,
+        receiptsAdded,
       },
       processingStatus: 'processed',
     });
@@ -180,6 +265,7 @@ export async function POST(request: NextRequest) {
       status: mappedStatus || sub.status,
       currentPeriodEnd: periodEnd,
       cancelAtPeriodEnd,
+      receiptsAdded,
     });
   } catch (e) {
     console.error('Marketplace Pro resync error:', e);
