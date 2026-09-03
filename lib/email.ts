@@ -376,6 +376,56 @@ export function formatOrderDisputeResolvedEmail(data: {
 }
 
 /**
+ * Admin "Cancel & Refund" (in favour of the buyer). Same marketplace shell as
+ * the dispute emails. Buyer copy: the full amount is back in the wallet.
+ * Publisher copy: nothing to do, the order is void and does NOT count against
+ * their completion rate; it is hidden from their orders page, so the CTA goes
+ * to the orders list rather than the (now invisible) order page.
+ */
+export function formatOrderCancelledEmail(data: {
+  role: 'publisher' | 'buyer';
+  fullName?: string | null;
+  orderNumber: string;
+  orderId: string;
+  domainName?: string | null;
+  reason?: string | null;
+  refundAmount?: number | null;
+}) {
+  const name = data.fullName?.trim() || 'there';
+  const orderLabel = data.domainName
+    ? `order <strong>#${data.orderNumber}</strong> (${data.domainName})`
+    : `order <strong>#${data.orderNumber}</strong>`;
+  const refunded = Number(data.refundAmount || 0) > 0;
+  const amount = refunded ? `$${Number(data.refundAmount).toFixed(2)}` : null;
+  const isBuyer = data.role === 'buyer';
+  const url = isBuyer
+    ? `https://app.linkwatcher.io/marketplace/orders/${data.orderId}`
+    : 'https://app.linkwatcher.io/marketplace/publisher/orders';
+  const intro = isBuyer
+    ? `Your ${orderLabel} has been <strong>cancelled</strong> by the Linkwatcher team${refunded ? ` and <strong>${amount}</strong> has been credited back to your Linkwatcher wallet balance` : ''}.`
+    : `The ${orderLabel} placed with you has been <strong>cancelled</strong> by the Linkwatcher team in favour of the buyer.`;
+  const nextSteps = isBuyer
+    ? refunded
+      ? `<strong>What this means for you:</strong> the full order amount is available in your wallet right away and can be used on any future marketplace order. No further action is needed.`
+      : `<strong>What this means for you:</strong> this order is closed and nothing was charged. No further action is needed.`
+    : `<strong>What this means for you:</strong> please do not publish or continue any work for this order. It has been removed from your orders page, it is not counted as a rejected or failed order, and it does <strong>not</strong> affect your completion rate or publisher rating.`;
+  return marketplaceDisputeEmailShell({
+    badgeText: isBuyer && refunded ? 'Order Cancelled & Refunded' : 'Order Cancelled',
+    badgeGradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+    name,
+    intro,
+    reasonLabel: 'Reason:',
+    reason: data.reason,
+    nextSteps,
+    supportLine: isBuyer
+      ? 'You can view the order details anytime, or contact our support team if you have any questions.'
+      : 'If you have any questions about this cancellation, please contact our support team.',
+    url,
+    ctaLabel: isBuyer ? 'View Order Details' : 'Go to My Orders',
+  });
+}
+
+/**
  * Notification sent to a user when an admin suspends their account. Standard
  * LinkWatcher email shell (slate gradient header, logo box, badge pill), with
  * the admin's suspension reason shown in the highlighted box.

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight, Copy, ChevronDown, Check } from 'lucide-react';
+import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight, Copy, ChevronDown, Check, Ban } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface Order {
@@ -298,6 +298,11 @@ export default function OrdersPage() {
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
+  // Cancel & Refund (in favour of the buyer): inline confirm panel in the modal
+  const [cancelPanelOpen, setCancelPanelOpen] = useState<boolean>(false);
+  const [cancelReason, setCancelReason] = useState<string>('');
+  const [isCancelling, setIsCancelling] = useState<boolean>(false);
+
   // Name lookups for verification
   const [domainName, setDomainName] = useState<string>('');
   const [buyerName, setBuyerName] = useState<string>('');
@@ -443,9 +448,63 @@ export default function OrdersPage() {
     setAdminRemarks('');
     setRefundAmount('');
     setIsEditMode(false);
+    setCancelPanelOpen(false);
+    setCancelReason('');
     setDomainName('');
     setBuyerName('');
     setPublisherName('');
+  };
+
+  // Cancel & Refund is only offered while the order is still in flight.
+  // Terminal states and states with their own money path (rejected -> buyer
+  // claims refund, disputed -> ruling, refund_requested -> refunded) are
+  // excluded, as are featured placements and orders already cancelled+refunded.
+  const canCancelRefund = (order: Order | null) => {
+    if (!order) return false;
+    if (order.serviceType === 'featured_domain') return false;
+    if (['completed', 'refunded', 'rejected', 'refund_requested', 'disputed'].includes(order.status)) return false;
+    if (order.status === 'cancelled' && (order.refundedAt || (order.refundedAmount || 0) > 0)) return false;
+    return true;
+  };
+
+  const handleCancelRefund = async () => {
+    if (!editingOrder || !cancelReason.trim()) return;
+    setIsCancelling(true);
+    try {
+      const response = await fetch('/api/orders/cancel-refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: editingOrder._id, reason: cancelReason.trim() }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        const refunded = Number(data.refundAmount || 0);
+        toast.success(
+          refunded > 0
+            ? `Order cancelled · $${refunded.toFixed(2)} refunded to the buyer's wallet`
+            : 'Order cancelled (nothing was paid, no refund needed)'
+        );
+        setCancelPanelOpen(false);
+        setCancelReason('');
+        // Reload the order so status, refund stamps and remarks reflect the RPC write.
+        try {
+          const res = await fetch(`/api/orders/${editingOrder._id}`);
+          const fresh = await res.json();
+          if (fresh.success && fresh.order) populateOrderForm(fresh.order);
+        } catch {
+          // The list refresh below still shows the new state.
+        }
+        fetchStats();
+        fetchOrders();
+      } else {
+        toast.error(data.error || 'Failed to cancel order');
+      }
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      toast.error('Error cancelling order');
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const fetchClarifications = async (orderId: string) => {
@@ -989,6 +1048,19 @@ export default function OrdersPage() {
                       <Edit2 className="w-4 h-4" />
                       Edit
                     </button>
+                    {!modalLoading && canCancelRefund(editingOrder) && (
+                      <button
+                        onClick={() => setCancelPanelOpen((open) => !open)}
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border font-medium transition ${
+                          cancelPanelOpen
+                            ? 'bg-rose-600 border-rose-600 text-white hover:bg-rose-700'
+                            : 'bg-white border-rose-300 text-rose-700 hover:bg-rose-50'
+                        }`}
+                      >
+                        <Ban className="w-4 h-4" />
+                        Cancel &amp; Refund
+                      </button>
+                    )}
                   </>
                 ) : (
                   <button
@@ -1016,6 +1088,68 @@ export default function OrdersPage() {
             ) : (
             <>
             <div className="p-6 space-y-6">
+              {/* Cancel & Refund (in favour of the buyer) */}
+              {cancelPanelOpen && !isEditMode && canCancelRefund(editingOrder) && (
+                <div className="border border-rose-200 bg-rose-50 rounded-lg p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <Ban className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 text-sm">
+                      <p className="font-semibold text-rose-900">Cancel this order in favour of the buyer</p>
+                      <ul className="mt-1.5 space-y-1 text-rose-800 text-xs list-disc pl-4">
+                        <li>
+                          {editingOrder.paidAt && !editingOrder.refundedAt
+                            ? <>The full charge of <strong>${(editingOrder.totalPrice || 0).toFixed(2)}</strong> is credited back to the buyer&apos;s LinkWatcher wallet (ledger entry recorded).</>
+                            : editingOrder.refundedAt
+                              ? <>The buyer was already refunded; only the status is set to Cancelled.</>
+                              : <>Nothing was paid on this order, so no refund is issued; it is just cancelled.</>}
+                        </li>
+                        <li>The order is <strong>hidden from the publisher</strong> and does <strong>not</strong> count against their completion rate (unlike Refunded or Rejected).</li>
+                        <li>Both parties receive an email and an in-app notification with the reason below.</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-rose-900 mb-1">
+                      Reason <span className="text-red-600">*</span>
+                      <span className="font-normal text-rose-700"> (shown to the buyer and the publisher)</span>
+                    </label>
+                    <textarea
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="e.g. Duplicate order placed by mistake, cancelled at the buyer's request"
+                      rows={3}
+                      disabled={isCancelling}
+                      className="w-full px-3 py-2 text-sm border border-rose-300 bg-white rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 disabled:opacity-60"
+                    />
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setCancelPanelOpen(false); setCancelReason(''); }}
+                      disabled={isCancelling}
+                      className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Keep order
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelRefund}
+                      disabled={isCancelling || !cancelReason.trim()}
+                      className="px-3 py-1.5 text-sm rounded-md bg-rose-600 text-white font-medium hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isCancelling && (
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      )}
+                      {isCancelling
+                        ? 'Cancelling...'
+                        : editingOrder.paidAt && !editingOrder.refundedAt
+                          ? `Cancel & refund $${(editingOrder.totalPrice || 0).toFixed(2)}`
+                          : 'Cancel order'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Core Order Details */}
               <div className="border border-gray-200 rounded-lg p-4 space-y-3">
                 <h4 className="text-sm font-semibold text-gray-900 mb-2">Core Order Details</h4>
