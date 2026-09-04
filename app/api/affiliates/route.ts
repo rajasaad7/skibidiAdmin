@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { checkAuth, getUserRole } from '@/lib/auth';
 import { hashPassword } from '@/lib/affiliate-auth';
 import { getAffiliateStats } from '@/lib/affiliate-stats';
+import { sendTrueEmailer, formatAffiliateWelcomeEmail } from '@/lib/email';
 
 async function requireSuperAdmin() {
   const ok = await checkAuth();
@@ -98,7 +99,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to set password' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, affiliate: data });
+    // Welcome email with the portal login link + initial credentials. Best
+    // effort: the affiliate exists either way, the UI reports whether it went out.
+    let emailSent = false;
+    try {
+      const result = await sendTrueEmailer({
+        to: [{ email, name }],
+        subject: 'Welcome to the LinkWatcher Affiliate Program',
+        htmlContent: formatAffiliateWelcomeEmail({ name, email, password, utmSource, commissionRate }),
+        senderName: 'Linkwatcher Affiliates',
+        senderEmail: 'no-reply@linkwatcher.io',
+        replyTo: 'support@linkwatcher.io',
+      });
+      emailSent = !!result.success;
+      if (!result.success) console.error('Affiliate welcome email failed:', result.error);
+    } catch (e) {
+      console.error('Affiliate welcome email error:', e);
+    }
+
+    return NextResponse.json({ success: true, affiliate: data, emailSent });
   } catch {
     return NextResponse.json({ error: 'Failed to create affiliate' }, { status: 500 });
   }

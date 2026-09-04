@@ -65,7 +65,8 @@ export default function AffiliatesPage() {
       });
       const json = await res.json();
       if (res.ok) {
-        toast.success('Affiliate created');
+        if (json.emailSent) toast.success('Affiliate created. Welcome email with login details sent.');
+        else toast('Affiliate created, but the welcome email could not be sent. Share the login details manually.', { icon: '⚠️', duration: 6000 });
         setShowCreate(false);
         setForm({ name: '', email: '', utmSource: '', password: '', commissionRate: '' });
         fetchAffiliates();
@@ -100,7 +101,7 @@ export default function AffiliatesPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: a.id, password }),
     });
-    if (res.ok) toast.success('Password reset');
+    if (res.ok) toast.success('Password reset. The affiliate will be asked to choose a new one on next login.');
     else toast.error('Reset failed');
   };
 

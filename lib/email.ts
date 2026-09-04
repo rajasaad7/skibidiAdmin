@@ -90,6 +90,9 @@ function buildLwGrantEmailShell({
   url,
   tagline = 'Your Link Building Marketplace',
   footerLabel = 'LinkWatcher Marketplace',
+  afterBody = '',
+  footerUrl = 'https://app.linkwatcher.io',
+  footerUrlLabel = 'app.linkwatcher.io',
 }: {
   badge: string;
   badgeColor: string;
@@ -100,8 +103,10 @@ function buildLwGrantEmailShell({
   url: string;
   tagline?: string;
   footerLabel?: string;
+  afterBody?: string;
+  footerUrl?: string;
+  footerUrlLabel?: string;
 }) {
-  const appUrl = 'https://app.linkwatcher.io';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -142,11 +147,12 @@ function buildLwGrantEmailShell({
             <div class="content">
                 <div class="greeting">${greeting}</div>
                 ${bodyLines.map((line) => `<p class="main-text">${line}</p>`).join('')}
+                ${afterBody}
                 <div class="features"><ul>${features.map((f) => `<li><span class="check-icon">&#10003;</span>${f}</li>`).join('')}</ul></div>
                 <div class="cta-section"><a href="${url}" class="cta-button">${ctaLabel}</a></div>
             </div>
             <div class="footer">
-                ${footerLabel} &middot; <a href="${appUrl}" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
+                ${footerLabel} &middot; <a href="${footerUrl}" style="color:#667eea; text-decoration:none;">${footerUrlLabel}</a>
             </div>
         </div>
     </div>
@@ -558,4 +564,67 @@ function marketplaceDisputeEmailShell(opts: {
     </div>
 </body>
 </html>`;
+}
+
+const AFFILIATE_PORTAL_URL = 'https://affiliate.linkwatcher.io';
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Welcome email sent to a newly created affiliate partner. Carries the portal
+ * login link plus the initial (temporary) credentials the admin set; the portal
+ * forces a password change on first login (affiliates."mustChangePassword").
+ * Same LinkWatcher email shell as the plan/Pro grant emails.
+ */
+export function formatAffiliateWelcomeEmail(data: {
+  name: string;
+  email: string;
+  password: string;
+  utmSource: string;
+  commissionRate: number;
+}) {
+  const loginUrl = `${AFFILIATE_PORTAL_URL}/login`;
+  const referralLink = `https://www.linkwatcher.io/?utm_source=${encodeURIComponent(data.utmSource)}`;
+  const rate = Number.isFinite(data.commissionRate) ? data.commissionRate : 0;
+  const cell = 'padding:8px 0; font-size:14px; color:#4b5563; vertical-align:top;';
+  const val = 'padding:8px 0; font-size:14px; color:#111827; font-weight:600; word-break:break-all;';
+  const credentialsBox = `
+                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:16px 20px; margin: 4px 0 20px;">
+                    <div style="font-size:13px; font-weight:600; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Your login details</div>
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%; border-collapse:collapse;">
+                        <tr><td style="${cell} width:38%;">Portal</td><td style="${val}"><a href="${loginUrl}" style="color:#1d4ed8; text-decoration:none;">${AFFILIATE_PORTAL_URL.replace('https://', '')}</a></td></tr>
+                        <tr><td style="${cell}">Email</td><td style="${val}">${escapeHtml(data.email)}</td></tr>
+                        <tr><td style="${cell}">Temporary password</td><td style="${val}"><code style="font-family:SFMono-Regular,Menlo,Consolas,monospace; background:#fff; border:1px solid #dbeafe; border-radius:4px; padding:2px 6px;">${escapeHtml(data.password)}</code></td></tr>
+                    </table>
+                    <p style="font-size:13px; color:#1e40af; margin:10px 0 0;">You will be asked to choose a new password the first time you sign in.</p>
+                </div>`;
+
+  return buildLwGrantEmailShell({
+    tagline: 'Affiliate Partner Program',
+    footerLabel: 'LinkWatcher Affiliates',
+    footerUrl: AFFILIATE_PORTAL_URL,
+    footerUrlLabel: 'affiliate.linkwatcher.io',
+    badge: 'Welcome Aboard',
+    badgeColor: '#2563eb',
+    greeting: `Hi ${escapeHtml(data.name.trim() || 'there')},`,
+    bodyLines: [
+      'Welcome to the <strong>LinkWatcher Affiliate Program</strong>! Your partner account is ready. Use the details below to sign in to your affiliate dashboard.',
+    ],
+    afterBody: credentialsBox,
+    features: [
+      `Your referral link: <a href="${referralLink}" style="color:#1d4ed8; text-decoration:none; word-break:break-all;">${escapeHtml(referralLink)}</a>`,
+      `Earn <strong>${rate}% recurring commission</strong> on every paid monitoring plan your referrals keep`,
+      'Track referrals, signups and earnings in real time from your dashboard',
+      'Add your payout details once your first referral upgrades to a paid plan',
+    ],
+    ctaLabel: 'Sign in to the Affiliate Portal',
+    url: loginUrl,
+  });
 }
