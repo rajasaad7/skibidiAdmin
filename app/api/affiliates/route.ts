@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       const result = await sendTrueEmailer({
         to: [{ email, name }],
         subject: 'Welcome to the LinkWatcher Affiliate Program',
-        htmlContent: formatAffiliateWelcomeEmail({ name, email, password, utmSource, commissionRate }),
+        htmlContent: formatAffiliateWelcomeEmail({ name, email, password }),
         senderName: 'Linkwatcher Affiliates',
         senderEmail: 'no-reply@linkwatcher.io',
         replyTo: 'support@linkwatcher.io',

@@ -148,7 +148,7 @@ function buildLwGrantEmailShell({
                 <div class="greeting">${greeting}</div>
                 ${bodyLines.map((line) => `<p class="main-text">${line}</p>`).join('')}
                 ${afterBody}
-                <div class="features"><ul>${features.map((f) => `<li><span class="check-icon">&#10003;</span>${f}</li>`).join('')}</ul></div>
+                ${features.length ? `<div class="features"><ul>${features.map((f) => `<li><span class="check-icon">&#10003;</span>${f}</li>`).join('')}</ul></div>` : ''}
                 <div class="cta-section"><a href="${url}" class="cta-button">${ctaLabel}</a></div>
             </div>
             <div class="footer">
@@ -587,12 +587,8 @@ export function formatAffiliateWelcomeEmail(data: {
   name: string;
   email: string;
   password: string;
-  utmSource: string;
-  commissionRate: number;
 }) {
   const loginUrl = `${AFFILIATE_PORTAL_URL}/login`;
-  const referralLink = `https://www.linkwatcher.io/?utm_source=${encodeURIComponent(data.utmSource)}`;
-  const rate = Number.isFinite(data.commissionRate) ? data.commissionRate : 0;
   const cell = 'padding:8px 0; font-size:14px; color:#4b5563; vertical-align:top;';
   const val = 'padding:8px 0; font-size:14px; color:#111827; font-weight:600; word-break:break-all;';
   const credentialsBox = `
@@ -618,12 +614,7 @@ export function formatAffiliateWelcomeEmail(data: {
       'Welcome to the <strong>LinkWatcher Affiliate Program</strong>! Your partner account is ready. Use the details below to sign in to your affiliate dashboard.',
     ],
     afterBody: credentialsBox,
-    features: [
-      `Your referral link: <a href="${referralLink}" style="color:#1d4ed8; text-decoration:none; word-break:break-all;">${escapeHtml(referralLink)}</a>`,
-      `Earn <strong>${rate}% recurring commission</strong> on every paid monitoring plan your referrals keep`,
-      'Track referrals, signups and earnings in real time from your dashboard',
-      'Add your payout details once your first referral upgrades to a paid plan',
-    ],
+    features: [],
     ctaLabel: 'Sign in to the Affiliate Portal',
     url: loginUrl,
   });
