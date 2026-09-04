@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomInt } from 'crypto';
 import { supabase } from '@/lib/supabase';
 import { checkAuth, getUserRole } from '@/lib/auth';
 import { hashPassword } from '@/lib/affiliate-auth';
 import { getAffiliateStats } from '@/lib/affiliate-stats';
 import { sendTrueEmailer, formatAffiliateWelcomeEmail } from '@/lib/email';
+
+// Temporary password for a new affiliate: 12 chars from an alphabet without
+// look-alikes (0/O, 1/l/I), emailed to the partner who must change it on first
+// login. Never chosen by the admin.
+const TEMP_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+function generateTemporaryPassword(length = 12) {
+  let out = '';
+  for (let i = 0; i < length; i++) out += TEMP_PASSWORD_ALPHABET[randomInt(TEMP_PASSWORD_ALPHABET.length)];
+  return out;
+}
 
 async function requireSuperAdmin() {
   const ok = await checkAuth();
@@ -53,15 +64,12 @@ export async function POST(request: NextRequest) {
     const name = String(body.name || '').trim();
     const email = String(body.email || '').trim().toLowerCase();
     const utmSource = String(body.utmSource || '').trim();
-    const password = String(body.password || '');
     const commissionRate = Number(body.commissionRate) || 0;
 
-    if (!name || !email || !utmSource || !password) {
-      return NextResponse.json({ error: 'Name, email, utm_source and password are required' }, { status: 400 });
+    if (!name || !email || !utmSource) {
+      return NextResponse.json({ error: 'Name, email and utm_source are required' }, { status: 400 });
     }
-    if (password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
-    }
+    const password = generateTemporaryPassword();
     if (/\s/.test(utmSource)) {
       return NextResponse.json({ error: 'utm_source cannot contain spaces' }, { status: 400 });
     }
@@ -117,7 +125,14 @@ export async function POST(request: NextRequest) {
       console.error('Affiliate welcome email error:', e);
     }
 
-    return NextResponse.json({ success: true, affiliate: data, emailSent });
+    // If the email did not go out the admin has no other way to see the temporary
+    // password, so return it (once) for manual hand-off; never on success.
+    return NextResponse.json({
+      success: true,
+      affiliate: data,
+      emailSent,
+      ...(emailSent ? {} : { temporaryPassword: password }),
+    });
   } catch {
     return NextResponse.json({ error: 'Failed to create affiliate' }, { status: 500 });
   }

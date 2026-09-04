@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Plus, RefreshCw, Users, Copy, Check, X, Link as LinkIcon,
-  Power, KeyRound, TrendingUp,
+  Power, KeyRound, TrendingUp, Mail,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -35,8 +35,10 @@ export default function AffiliatesPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // create form
-  const [form, setForm] = useState({ name: '', email: '', utmSource: '', password: '', commissionRate: '' });
+  const [form, setForm] = useState({ name: '', email: '', utmSource: '', commissionRate: '' });
   const [submitting, setSubmitting] = useState(false);
+  // Shown only when the welcome email failed: the one-time temporary password for manual hand-off.
+  const [fallbackPassword, setFallbackPassword] = useState<string | null>(null);
 
   const fetchAffiliates = async () => {
     setLoading(true);
@@ -65,10 +67,14 @@ export default function AffiliatesPage() {
       });
       const json = await res.json();
       if (res.ok) {
-        if (json.emailSent) toast.success('Affiliate created. Welcome email with login details sent.');
-        else toast('Affiliate created, but the welcome email could not be sent. Share the login details manually.', { icon: '⚠️', duration: 6000 });
+        if (json.emailSent) {
+          toast.success('Affiliate created. Welcome email with the temporary password sent.');
+        } else {
+          setFallbackPassword(json.temporaryPassword || null);
+          toast('Affiliate created, but the welcome email could not be sent.', { icon: '⚠️', duration: 6000 });
+        }
         setShowCreate(false);
-        setForm({ name: '', email: '', utmSource: '', password: '', commissionRate: '' });
+        setForm({ name: '', email: '', utmSource: '', commissionRate: '' });
         fetchAffiliates();
       } else {
         toast.error(json.error || 'Failed to create');
@@ -222,6 +228,26 @@ export default function AffiliatesPage() {
       </div>
 
       {/* Create modal */}
+      {fallbackPassword && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-lg">
+          <p className="text-sm font-semibold text-amber-900">Welcome email not sent</p>
+          <p className="text-xs text-amber-800 mt-1">
+            Share these login details with the partner manually. This password is shown once.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <code className="flex-1 rounded-md bg-white border border-amber-200 px-2.5 py-1.5 text-sm font-mono text-gray-900 select-all">{fallbackPassword}</code>
+            <button
+              type="button"
+              onClick={() => { navigator.clipboard.writeText(fallbackPassword); toast.success('Password copied'); }}
+              className="rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+            >
+              Copy
+            </button>
+            <button type="button" onClick={() => setFallbackPassword(null)} className="text-xs text-amber-700 hover:underline">Dismiss</button>
+          </div>
+        </div>
+      )}
+
       {showCreate && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowCreate(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -256,19 +282,17 @@ export default function AffiliatesPage() {
                   Their link will be <span className="font-mono">?utm_source={form.utmSource || '...'}</span> — must be unique, no spaces.
                 </p>
               </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">Password</label>
-                  <input type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
-                    placeholder="min 6 chars" />
-                </div>
-                <div className="w-28">
-                  <label className="block text-xs font-medium text-gray-700 mb-1.5">Commission %</label>
-                  <input type="number" min="0" step="0.1" value={form.commissionRate} onChange={(e) => setForm({ ...form, commissionRate: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
-                    placeholder="0" />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">Commission %</label>
+                <input type="number" min="0" step="0.1" value={form.commissionRate} onChange={(e) => setForm({ ...form, commissionRate: e.target.value })}
+                  className="w-full px-3.5 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0" />
+              </div>
+              <div className="flex items-start gap-2.5 rounded-lg bg-emerald-50 border border-emerald-100 px-3.5 py-3">
+                <Mail className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-emerald-800 leading-relaxed">
+                  A temporary password is generated automatically and emailed to the partner with their portal login link. They must set a new password on first login.
+                </p>
               </div>
 
               <button type="submit" disabled={submitting}
