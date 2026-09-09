@@ -233,6 +233,7 @@ export async function GET(request: NextRequest) {
         "isActive",
         "adminApproved",
         "adminRejectionReason",
+        "editHistory",
         "createdAt",
         "updatedAt"
       `)

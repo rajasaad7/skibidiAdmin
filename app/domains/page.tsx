@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Trash2, RefreshCw, Edit3, Search, User, Crown, Users, ChevronLeft, ChevronRight, Download, CheckCircle, XCircle, AlertCircle, AlertTriangle, X, Edit, Sparkles, ChevronDown, Upload, Minimize2, Maximize2 } from 'lucide-react';
 import { prohibitedNicheLabel } from '@/lib/prohibited-niches';
 import OfferingModal from '@/components/OfferingModal';
+import type { OfferingEditHistoryEntry } from '@/components/OfferingChangeHistory';
 import DomainEditModal from '@/components/DomainEditModal';
 
 interface PublisherOffering {
@@ -29,6 +30,7 @@ interface PublisherOffering {
   examplePosts?: string | null;
   adminApproved?: boolean | null;
   adminRejectionReason?: string;
+  editHistory?: OfferingEditHistoryEntry[];
 }
 
 interface Domain {

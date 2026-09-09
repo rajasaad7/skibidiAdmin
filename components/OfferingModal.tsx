@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, X, Save } from 'lucide-react';
+import OfferingChangeHistory, { type OfferingEditHistoryEntry } from './OfferingChangeHistory';
 
 interface PublisherOffering {
   isActive?: boolean;
@@ -26,6 +27,7 @@ interface PublisherOffering {
   examplePosts?: string | null;
   adminApproved?: boolean | null;
   adminRejectionReason?: string;
+  editHistory?: OfferingEditHistoryEntry[];
 }
 
 interface OfferingModalProps {
@@ -77,23 +79,6 @@ export default function OfferingModal({
       <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[95vh] overflow-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 z-10">
-          {/* Edit History Alert */}
-          {domain.editHistory && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  <div className="text-xs font-semibold text-blue-900 mb-1">Recent Changes</div>
-                  <div className="text-sm text-blue-800">
-                    {domain.editHistory.changes.join(', ')}
-                  </div>
-                  <div className="text-xs text-blue-600 mt-1">
-                    Modified on {new Date(domain.editHistory.timestamp).toLocaleString()} by Publisher ID: {domain.editHistory.publisherId.substring(0, 8)}...
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="flex items-start justify-between mb-3">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Publisher Offering Details</h3>
@@ -154,6 +139,9 @@ export default function OfferingModal({
         </div>
 
         <div className="p-6 space-y-4">
+          {/* What the publisher changed since the last review (structured, per offering) */}
+          <OfferingChangeHistory entries={offering.editHistory} legacy={domain.editHistory} />
+
           {/* Status Section */}
           <div>
             <h4 className="text-sm font-semibold text-gray-900 mb-2">Status</h4>
