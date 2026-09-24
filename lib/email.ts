@@ -619,3 +619,28 @@ export function formatAffiliateWelcomeEmail(data: {
     url: loginUrl,
   });
 }
+
+/**
+ * Partner API access enabled: tells the user where to create keys and where
+ * the docs live. Sent from marketplace@linkwatcher.io by the api-access route.
+ */
+export function formatApiAccessEnabledEmail(data: { fullName?: string | null }) {
+  return buildLwGrantEmailShell({
+    badge: 'Partner API Enabled',
+    badgeColor: '#2563eb',
+    greeting: `Hi ${data.fullName?.trim() || 'there'},`,
+    bodyLines: [
+      'Partner API access is now enabled on your LinkWatcher account. You can create API keys under <strong>Marketplace Settings &gt; API Access</strong> and connect your own platform to the marketplace.',
+      'With the API you can:',
+    ],
+    features: [
+      'Read the full catalog with prices and per-publisher delivery stats',
+      'Place orders paid from your LinkWatcher wallet balance',
+      'Track every order and approve or revise delivered work',
+      'Limit each key with scopes, an IP allowlist, spend caps and an expiry',
+    ],
+    ctaLabel: 'Create your first API key',
+    url: 'https://app.linkwatcher.io/marketplace/settings?tab=api',
+    afterBody: '<p style="font-size:14px;color:#6b7280;margin-top:16px;">Documentation: <a href="https://www.linkwatcher.io/docs/advertisers/partner-api" style="color:#2563eb;">linkwatcher.io/docs/advertisers/partner-api</a></p>',
+  });
+}
