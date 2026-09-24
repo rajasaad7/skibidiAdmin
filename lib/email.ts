@@ -641,6 +641,6 @@ export function formatApiAccessEnabledEmail(data: { fullName?: string | null }) 
     ],
     ctaLabel: 'Create your first API key',
     url: 'https://app.linkwatcher.io/marketplace/settings?tab=api',
-    afterBody: '<p style="font-size:14px;color:#6b7280;margin-top:16px;">Documentation: <a href="https://www.linkwatcher.io/docs/advertisers/partner-api" style="color:#2563eb;">linkwatcher.io/docs/advertisers/partner-api</a></p>',
+    afterBody: '<p style="font-size:14px;color:#6b7280;margin-top:16px;">Documentation: <a href="https://www.linkwatcher.io/docs/partner-api/overview" style="color:#2563eb;">linkwatcher.io/docs/partner-api/overview</a></p>',
   });
 }
