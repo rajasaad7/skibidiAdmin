@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import PartnerApiDrawer from '@/components/PartnerApiDrawer';
 import { ArrowLeft, User, Mail, Calendar, Link as LinkIcon, Target, Globe, ShoppingCart, DollarSign, CreditCard, Package, ExternalLink, Edit, Trash2, CheckCircle, XCircle, MessageCircle, Send, Ban, X, KeyRound } from 'lucide-react';
 
 interface LinkData {
@@ -177,7 +178,8 @@ export default function UserDetailsPage() {
   const [unsuspendModal, setUnsuspendModal] = useState<{ open: boolean; userName: string } | null>(null);
   const [unsuspending, setUnsuspending] = useState(false);
   // Partner API access (per-user toggle, super_admin only)
-  const [apiAccess, setApiAccess] = useState<{ enabled: boolean; grantedAt: string | null; grantedBy: string | null; keys: any[]; events: any[] } | null>(null);
+  const [apiAccess, setApiAccess] = useState<{ enabled: boolean; grantedAt: string | null; grantedBy: string | null; keys: any[]; events: any[]; stats?: any } | null>(null);
+  const [apiDrawerOpen, setApiDrawerOpen] = useState(false);
   const [apiAccessModal, setApiAccessModal] = useState<{ enable: boolean } | null>(null);
   const [apiAccessSaving, setApiAccessSaving] = useState(false);
 
@@ -204,7 +206,7 @@ export default function UserDetailsPage() {
       const response = await fetch(`/api/users/api-access?userId=${userId}`);
       const data = await response.json();
       if (data.success) {
-        setApiAccess({ enabled: data.enabled, grantedAt: data.grantedAt, grantedBy: data.grantedBy, keys: data.keys || [], events: data.events || [] });
+        setApiAccess({ enabled: data.enabled, grantedAt: data.grantedAt, grantedBy: data.grantedBy, keys: data.keys || [], events: data.events || [], stats: data.stats });
       }
     } catch (error) {
       console.error('Error fetching API access:', error);
@@ -734,74 +736,48 @@ export default function UserDetailsPage() {
         </div>
       </div>
 
-      {/* Partner API access */}
+      {/* Partner API access (summary; full detail in the side drawer) */}
       {apiAccess && (
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 mb-6">
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-blue-600" />
-              Partner API
-            </h3>
-            {apiAccess.enabled ? (
-              <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
-                Enabled{apiAccess.grantedAt ? ` ${new Date(apiAccess.grantedAt).toLocaleDateString()}` : ''}{apiAccess.grantedBy ? ` by ${apiAccess.grantedBy}` : ''}
-              </span>
-            ) : (
-              <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-gray-100 text-gray-700">Not enabled</span>
-            )}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-blue-600" />
+                Partner API
+              </h3>
+              {apiAccess.enabled ? (
+                <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+                  Enabled{apiAccess.grantedAt ? ` ${new Date(apiAccess.grantedAt).toLocaleDateString()}` : ''}{apiAccess.grantedBy ? ` by ${apiAccess.grantedBy}` : ''}
+                </span>
+              ) : (
+                <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-gray-100 text-gray-700">Not enabled</span>
+              )}
+            </div>
+            <button
+              onClick={() => setApiDrawerOpen(true)}
+              className="px-4 py-2 text-sm font-semibold rounded-lg transition bg-blue-600 text-white hover:bg-blue-700"
+            >
+              View details
+            </button>
           </div>
-          {apiAccess.keys.length === 0 ? (
-            <p className="text-sm text-gray-500">No API keys created.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b">
-                    <th className="py-2 pr-4 font-medium">Key</th>
-                    <th className="py-2 pr-4 font-medium">Scopes</th>
-                    <th className="py-2 pr-4 font-medium">Caps</th>
-                    <th className="py-2 pr-4 font-medium">IP allowlist</th>
-                    <th className="py-2 pr-4 font-medium">Last used</th>
-                    <th className="py-2 pr-4 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {apiAccess.keys.map((k: any) => (
-                    <tr key={k._id} className="border-b last:border-0">
-                      <td className="py-2 pr-4 whitespace-nowrap"><span className="font-medium text-gray-900">{k.name}</span><span className="block font-mono text-xs text-gray-500">{k.keyPrefix}...</span></td>
-                      <td className="py-2 pr-4 font-mono text-xs text-gray-700">{(k.scopes || []).join(', ')}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap text-gray-700">${Number(k.maxOrderUsd)} / order, ${Number(k.dailySpendCapUsd)} / 24h</td>
-                      <td className="py-2 pr-4 text-gray-700">{k.ipAllowlist?.length ? k.ipAllowlist.join(', ') : <span className="text-amber-600">Any IP</span>}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap text-gray-700">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : 'Never'}{k.lastUsedIp ? <span className="block text-xs text-gray-400">{k.lastUsedIp}</span> : null}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">
-                        {k.revokedAt ? (
-                          <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-md bg-red-100 text-red-800">Revoked</span>
-                        ) : k.expiresAt && new Date(k.expiresAt) < new Date() ? (
-                          <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-md bg-orange-100 text-orange-800">Expired</span>
-                        ) : (
-                          <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-md bg-green-100 text-green-800">Active</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {apiAccess.events.length > 0 && (
-            <div className="mt-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Recent events</h4>
-              <ul className="text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto">
-                {apiAccess.events.map((ev: any) => (
-                  <li key={ev._id} className="flex justify-between gap-3">
-                    <span className="font-mono">{ev.type}{ev.detail?.orderNumber ? ` · ${ev.detail.orderNumber}` : ''}{ev.detail?.kind ? ` · ${ev.detail.kind}` : ''}</span>
-                    <span className="text-gray-400 whitespace-nowrap">{new Date(ev.createdAt).toLocaleString()}{ev.ip ? ` · ${ev.ip}` : ''}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+            {[
+              { label: 'Active keys', value: String(apiAccess.stats?.activeKeys ?? 0) },
+              { label: 'Revoked keys', value: String(apiAccess.stats?.revokedKeys ?? 0) },
+              { label: 'API orders', value: String(apiAccess.stats?.apiOrders ?? 0) },
+              { label: 'Spend last 24h', value: `$${(Number(apiAccess.stats?.spend24h) || 0).toFixed(2)}` },
+            ].map((tile) => (
+              <div key={tile.label} className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-3">
+                <div className="text-xs text-gray-500">{tile.label}</div>
+                <div className="text-xl font-bold text-gray-900">{tile.value}</div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">Last API use: {apiAccess.stats?.lastUsedAt ? new Date(apiAccess.stats.lastUsedAt).toLocaleString() : 'never'}. Keys, orders and the full event log are in the details drawer.</p>
         </div>
+      )}
+      {apiAccess && (
+        <PartnerApiDrawer userId={userId as string} userName={details.user.fullName} open={apiDrawerOpen} onClose={() => setApiDrawerOpen(false)} />
       )}
 
       {/* Enhanced Activity Overview */}
