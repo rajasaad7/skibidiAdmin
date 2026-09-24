@@ -98,7 +98,7 @@ function SourceBadge({ source, tier }: { source: string; tier?: string | null })
         {source}
       </span>
       {tier === 'enterprise' && (
-        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-800" title="Marketplace Enterprise: Pro + partner API access">
+        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800" title="Marketplace Enterprise: Pro + partner API access">
           enterprise
         </span>
       )}
