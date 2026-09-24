@@ -36,6 +36,7 @@ const DODO_STATUS_MAP: Record<string, string> = {
 interface DodoSubscription {
   subscription_id: string;
   status: string;
+  product_id?: string | null;
   next_billing_date?: string | null;
   current_period_end?: string | null;
   cancel_at_next_billing_date?: boolean | null;
@@ -216,6 +217,18 @@ export async function POST(request: NextRequest) {
     };
     if (mappedStatus) update.status = mappedStatus;
     if (periodEnd) update.currentPeriodEnd = periodEnd;
+    // Tier follows the Dodo product (Pro vs Enterprise) when the product is known.
+    if (remote.product_id) {
+      const { data: tierRow } = await supabase
+        .from('marketplace_tiers')
+        .select('tier, priceMinor')
+        .eq('dodoProductId', remote.product_id)
+        .maybeSingle();
+      if (tierRow?.tier) {
+        update.tier = tierRow.tier;
+        update.priceMinor = tierRow.priceMinor;
+      }
+    }
     // A confirmed-healthy subscription no longer needs a payment grace window.
     if (mappedStatus === 'active') update.graceUntil = null;
 

@@ -13,6 +13,7 @@ interface ProSubscription {
   userId: string;
   source: string;
   status: string;
+  tier?: string | null;
   dodoSubscriptionId: string | null;
   dodoCustomerId: string | null;
   currentPeriodEnd: string | null;
@@ -90,10 +91,17 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function SourceBadge({ source }: { source: string }) {
+function SourceBadge({ source, tier }: { source: string; tier?: string | null }) {
   return (
-    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_STYLES[source] || 'bg-gray-100 text-gray-600'}`}>
-      {source}
+    <span className="inline-flex items-center gap-1">
+      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_STYLES[source] || 'bg-gray-100 text-gray-600'}`}>
+        {source}
+      </span>
+      {tier === 'enterprise' && (
+        <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-800" title="Marketplace Enterprise: Pro + partner API access">
+          enterprise
+        </span>
+      )}
     </span>
   );
 }
@@ -130,7 +138,7 @@ export default function MarketplaceProPage() {
 
   // Grant modal
   const [showGrant, setShowGrant] = useState(false);
-  const [grantForm, setGrantForm] = useState({ userId: '', source: 'promo', until: '' });
+  const [grantForm, setGrantForm] = useState({ userId: '', source: 'promo', until: '', tier: 'pro' });
   const [granting, setGranting] = useState(false);
   // Set when the grant API answers 409: the user already has Pro via a paid
   // source. The next submit resends with confirm: true ("Grant anyway").
@@ -236,7 +244,7 @@ export default function MarketplaceProPage() {
         const who = json.userEmail ? `Pro granted to ${json.userEmail}` : 'Pro granted';
         toast.success(json.emailSent ? `${who} · notification email sent` : `${who} · email NOT sent`);
         setShowGrant(false);
-        setGrantForm({ userId: '', source: 'promo', until: '' });
+        setGrantForm({ userId: '', source: 'promo', until: '', tier: 'pro' });
         setGrantWarning(null);
         fetchSubscriptions();
       } else if (res.status === 409 && json.requiresConfirmation) {
@@ -551,7 +559,7 @@ export default function MarketplaceProPage() {
                         <span className="text-gray-400 text-xs">No workspace</span>
                       )}
                     </td>
-                    <td className="px-5 py-3"><SourceBadge source={s.source} /></td>
+                    <td className="px-5 py-3"><SourceBadge source={s.source} tier={s.tier} /></td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <StatusBadge status={s.effectiveStatus || s.status} />
@@ -646,6 +654,20 @@ export default function MarketplaceProPage() {
                     >
                       <option value="promo">promo</option>
                       <option value="admin">admin</option>
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">Tier</label>
+                  <div className="relative">
+                    <select
+                      value={grantForm.tier}
+                      onChange={(e) => setGrantForm({ ...grantForm, tier: e.target.value })}
+                      className="appearance-none w-full pl-3.5 pr-9 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white cursor-pointer"
+                    >
+                      <option value="pro">Pro</option>
+                      <option value="enterprise">Enterprise (Pro + API)</option>
                     </select>
                     <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>

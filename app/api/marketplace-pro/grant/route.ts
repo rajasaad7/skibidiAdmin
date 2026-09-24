@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const userInput = typeof body.userId === 'string' ? body.userId.trim() : '';
     const source = typeof body.source === 'string' ? body.source.trim() : '';
+    const tier = body.tier === 'enterprise' ? 'enterprise' : 'pro';
     let until = typeof body.until === 'string' ? body.until.trim() : '';
 
     if (!userInput) {
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
       p_source: source,
       p_until: untilDate.toISOString(),
       p_granted_by: await getAdminEmail(),
+      p_tier: tier,
     });
 
     if (error) {

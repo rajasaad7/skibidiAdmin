@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('marketplace_pro_subscriptions')
-      .select('_id, "userId", source, status, "dodoSubscriptionId", "dodoCustomerId", "currentPeriodEnd", "cancelAtPeriodEnd", "graceUntil", "revokedBy", "revokedReason", "createdAt", "updatedAt"')
+      .select('_id, "userId", source, status, tier, "dodoSubscriptionId", "dodoCustomerId", "currentPeriodEnd", "cancelAtPeriodEnd", "graceUntil", "revokedBy", "revokedReason", "createdAt", "updatedAt"')
       .order('createdAt', { ascending: false })
       .limit(500);
 
