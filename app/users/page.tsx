@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw, Search, User, Mail, Calendar, Eye, BadgeCheck, Info, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, LogIn, Copy, Check, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { countryNameToAlpha2, countryFlagUrl } from '@/lib/country-flags';
 
 interface User {
   _id: string;
@@ -49,6 +50,12 @@ interface User {
     type: string;
     value: string;
     updatedAt: string;
+  } | null;
+  // From user_device_details (signup* = first-seen for Google signups)
+  signupGeo?: {
+    country: string | null;
+    city: string | null;
+    ip: string | null;
   } | null;
 }
 
@@ -451,6 +458,31 @@ export default function UsersPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="font-medium text-gray-900">{user.fullName.split(' ')[0]}</div>
+                          {(() => {
+                            const alpha2 = countryNameToAlpha2(user.signupGeo?.country);
+                            if (!alpha2) return null;
+                            return (
+                              <div className="relative group">
+                                <img
+                                  src={countryFlagUrl(alpha2)}
+                                  srcSet={`${countryFlagUrl(alpha2, 40)} 2x`}
+                                  width={20}
+                                  height={15}
+                                  alt={user.signupGeo!.country || alpha2}
+                                  className="w-5 h-[15px] rounded-[2px] shadow-sm ring-1 ring-black/10 cursor-help"
+                                  loading="lazy"
+                                />
+                                <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 whitespace-nowrap">
+                                  <div className="absolute bottom-full left-2 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
+                                  <div className="font-semibold mb-1">Signed up from</div>
+                                  <div>{[user.signupGeo!.city, user.signupGeo!.country].filter(Boolean).join(', ')}</div>
+                                  {user.signupGeo!.ip && (
+                                    <div className="text-gray-400 mt-0.5">IP: {user.signupGeo!.ip}</div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {hasAttribution(user.UTM) && (
                             <div className="relative group">
                               <Info className="w-4 h-4 text-purple-500 cursor-help" />

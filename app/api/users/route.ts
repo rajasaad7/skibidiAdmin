@@ -133,7 +133,37 @@ export async function GET(request: NextRequest) {
 
     const total = countData || 0;
     const totalPages = Math.ceil(total / limit);
-    const paginatedUsers = usersWithCounts || [];
+    let paginatedUsers = usersWithCounts || [];
+
+    // Signup geo for the flag next to the name. One batched read of
+    // user_device_details for this page's ids only (never the whole table).
+    // Best-effort: a failure here must not break the users list.
+    const pageIds: string[] = paginatedUsers.map((u: { _id: string }) => u._id).filter(Boolean);
+    if (pageIds.length > 0) {
+      const { data: geoRows, error: geoError } = await supabase
+        .from('user_device_details')
+        .select('userId, signupCountry, signupCity, signupIP')
+        .in('userId', pageIds);
+
+      if (geoError) {
+        console.error('Signup geo lookup error:', geoError);
+      } else {
+        const geoByUser = new Map<string, { country: string | null; city: string | null; ip: string | null }>();
+        for (const row of geoRows || []) {
+          if (!geoByUser.has(row.userId)) {
+            geoByUser.set(row.userId, {
+              country: row.signupCountry || null,
+              city: row.signupCity || null,
+              ip: row.signupIP || null,
+            });
+          }
+        }
+        paginatedUsers = paginatedUsers.map((u: { _id: string }) => ({
+          ...u,
+          signupGeo: geoByUser.get(u._id) || null,
+        }));
+      }
+    }
 
     return NextResponse.json({
       success: true,
