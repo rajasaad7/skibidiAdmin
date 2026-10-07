@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
     const errors = [];
 
     // Process each domain
-    for (const domain of domains) {
+    for (let i = 0; i < domains.length; i++) {
+      const domain = domains[i];
       try {
         // Categorize the domain
         const result = await categorizeDomain(
@@ -104,8 +105,12 @@ export async function POST(request: NextRequest) {
           errors.push(`Could not categorize ${domain.domainName}: ${result.reason}`);
         }
 
-        // Longer delay to avoid rate limiting (2 seconds between requests)
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Longer delay to avoid rate limiting (2 seconds between requests).
+        // Only BETWEEN domains: single-domain calls (the page's per-domain loop)
+        // used to pay this wait after their only domain for nothing.
+        if (i < domains.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       } catch (error: any) {
         console.error(`Error processing domain ${domain.domainName}:`, error);
         errors.push(`Error processing ${domain.domainName}: ${error.message}`);
