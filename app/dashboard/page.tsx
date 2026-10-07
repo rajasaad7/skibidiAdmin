@@ -187,21 +187,12 @@ async function getMonitoringStats() {
       projectsRes,
       workspacesRes,
       usersRes,
-      activeLinksRes,
-      disabledLinksRes,
-      activeKeywordsRes,
-      disabledKeywordsRes,
-      activeProjectsRes,
-      disabledProjectsRes,
-      linkStatsRes,
-      topUsersRes,
-      topProjectsRes,
+      monitoringRes,
       linksAddedTodayRes,
       linksAddedWeekRes,
       keywordsAddedTodayRes,
       keywordsAddedWeekRes,
-      usersAddedTodayRes,
-      activeOrdersRes
+      usersAddedTodayRes
     ] = await Promise.all([
       // Total links
       supabase.from('links').select('_id', { count: 'exact', head: true }),
@@ -218,48 +209,12 @@ async function getMonitoringStats() {
       // Total users
       supabase.from('users').select('_id', { count: 'exact', head: true }),
 
-      // Get active links using RPC (same as old super admin)
-      supabase.rpc('get_active_links_with_active_projects', { p_limit: 10000 }),
-
-      // Placeholder for disabled count - will be calculated
-      Promise.resolve({ count: 0 }),
-
-      // Active keywords
-      supabase.from('keywords')
-        .select('_id', { count: 'exact', head: true })
-        .or('disabled.is.null,disabled.eq.false'),
-
-      // Disabled keywords
-      supabase.from('keywords')
-        .select('_id', { count: 'exact', head: true })
-        .eq('disabled', true),
-
-      // Active projects (both disabled and disabledLastActive are false/null)
-      supabase.from('projects')
-        .select('_id, disabled, disabledLastActive', { count: 'exact' }),
-
-      // This will be calculated from the data above
-      supabase.from('projects')
-        .select('_id', { count: 'exact', head: true })
-        .eq('disabled', true),
-
-      // Link stats (found, indexed, issues) - only active links
-      supabase.from('links')
-        .select('stats, indexedStats, disabled, projectId, projects(disabled)')
-        .or('disabled.is.null,disabled.eq.false')
-        .limit(10000),
-
-      // Top users by link count (active links only)
-      supabase.from('links')
-        .select('userId, disabled, projectId, projects(disabled)')
-        .or('disabled.is.null,disabled.eq.false')
-        .limit(10000),
-
-      // Top projects by link count (active links only)
-      supabase.from('links')
-        .select('projectId, disabled, projects(disabled)')
-        .or('disabled.is.null,disabled.eq.false')
-        .limit(10000),
+      // Every breakdown computed in SQL (links active/paused/disabled + found/indexed/
+      // issues, projects active/inactive/disabled, keywords, paid orgs/users, top-5
+      // users + projects). Replaces the old length-of-RPC-result and .limit(10000)
+      // fetches, which PostgREST capped at 1000 rows (Active links was pinned at 1,000,
+      // projects at ~1,000), and the legacy Paddle `orders` table for "paid users".
+      supabase.rpc('admin_dashboard_monitoring_stats'),
 
       // Links added today
       supabase.from('links')
@@ -285,122 +240,73 @@ async function getMonitoringStats() {
       supabase.from('users')
         .select('_id', { count: 'exact', head: true })
         .gte('createdAt', today.toISOString()),
-
-      // Get active orders (paid subscriptions) - orders table has userId field
-      supabase.from('orders')
-        .select('userId')
-        .eq('status', 'active'),
     ]);
 
-    // Calculate link stats from active links only
-    const links = linkStatsRes.data || [];
+    // Counters from the SQL RPC (exact, no row cap). Link states sum to total:
+    // active = what the engine monitors (link + project enabled, project has a website),
+    // paused = project disabledLastActive (inactivity pause), disabled = everything else.
+    if (monitoringRes.error) {
+      console.error('admin_dashboard_monitoring_stats error:', monitoringRes.error);
+    }
+    const m = (monitoringRes.data || {}) as {
+      links?: { total?: number; active?: number; paused?: number; disabled?: number; found?: number; indexed?: number; issues?: number };
+      projects?: { total?: number; active?: number; inactive?: number; disabled?: number };
+      keywords?: { total?: number; active?: number; disabled?: number };
+      paidOrganizations?: number;
+      paidUsers?: number;
+      topUsers?: Array<{ userId: string; fullName: string | null; email: string | null; linkCount: number }>;
+      topProjects?: Array<{ projectId: string; projectName: string | null; projectWebsite: string | null; linkCount: number }>;
+    };
+    const linkStats = m.links || {};
+    const projectStats = m.projects || {};
+    const keywordStats = m.keywords || {};
 
-    const foundLinks = links.filter(l => l.stats?.found === true).length;
-    const indexedLinks = links.filter(l => l.indexedStats?.indexed === true).length;
-    const issueLinks = links.filter(l => l.stats?.status && l.stats.status !== 'success' && l.stats.status !== 'pending').length;
+    const foundLinks = Number(linkStats.found || 0);
+    const indexedLinks = Number(linkStats.indexed || 0);
+    const issueLinks = Number(linkStats.issues || 0);
+    const activeLinksCount = Number(linkStats.active || 0);
+    const pausedLinksCount = Number(linkStats.paused || 0);
+    const disabledLinksCount = Number(linkStats.disabled || 0);
+    const activeKeywordsCount = Number(keywordStats.active || 0);
+    const disabledKeywordsCount = Number(keywordStats.disabled || 0);
 
-    // Calculate link counts using RPC (matching old super admin logic)
-    const activeLinksCount = activeLinksRes.data?.length || 0;
-    const totalLinksCount = linksRes.count || 0;
-    const disabledLinksCount = totalLinksCount - activeLinksCount;
-    const activeKeywordsCount = activeKeywordsRes.count || 0;
-    const disabledKeywordsCount = disabledKeywordsRes.count || 0;
+    // Projects: active = not disabled and not disabledLastActive,
+    // inactive = disabledLastActive (auto-paused), disabled = disabled
+    const activeProjectsCount = Number(projectStats.active || 0);
+    const inactiveProjectsCount = Number(projectStats.inactive || 0);
+    const disabledProjectsCount = Number(projectStats.disabled || 0);
 
-    // Calculate project stats (matching old super admin logic)
-    // Active: disabled=false AND disabledLastActive=false
-    // Inactive: disabledLastActive=true (but disabled=false)
-    const allProjects = activeProjectsRes.data || [];
-    const activeProjectsCount = allProjects.filter((p: any) =>
-      p.disabled !== true && p.disabledLastActive !== true
-    ).length;
-    const inactiveProjectsCount = allProjects.filter((p: any) =>
-      p.disabled !== true && p.disabledLastActive === true
-    ).length;
-    const disabledProjectsCount = disabledProjectsRes.count || 0;
+    // Top users / projects by active-link count (grouped in SQL, names joined there)
+    const usersWithMostLinks = (m.topUsers || []).map(u => ({
+      userId: u.userId,
+      fullName: u.fullName || 'Unknown',
+      email: u.email || '',
+      linkCount: Number(u.linkCount || 0)
+    }));
 
-    // Calculate top users (only active links)
-    const userCounts: Record<string, number> = {};
-    (topUsersRes.data || []).forEach(link => {
-      if (link.userId) {
-        userCounts[link.userId] = (userCounts[link.userId] || 0) + 1;
-      }
-    });
+    const projectsWithMostLinks = (m.topProjects || []).map(p => ({
+      projectId: p.projectId,
+      projectName: p.projectName || 'Unknown',
+      projectWebsite: p.projectWebsite || null,
+      linkCount: Number(p.linkCount || 0)
+    }));
 
-    const topUserIds = Object.entries(userCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([userId]) => userId);
-
-    // Fetch user details
-    const { data: usersData } = await supabase
-      .from('users')
-      .select('_id, fullName, email')
-      .in('_id', topUserIds);
-
-    const usersMap = new Map((usersData || []).map(user => [user._id, user]));
-
-    const usersWithMostLinks = Object.entries(userCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([userId, count]) => ({
-        userId,
-        fullName: usersMap.get(userId)?.fullName || 'Unknown',
-        email: usersMap.get(userId)?.email || '',
-        linkCount: count
-      }));
-
-    // Calculate top projects (only active links)
-    const projectCounts: Record<string, number> = {};
-    (topProjectsRes.data || []).forEach(link => {
-      if (link.projectId) {
-        projectCounts[link.projectId] = (projectCounts[link.projectId] || 0) + 1;
-      }
-    });
-
-    const topProjectIds = Object.entries(projectCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([projectId]) => projectId);
-
-    // Fetch project details
-    const { data: projectsData } = await supabase
-      .from('projects')
-      .select('_id, name, website')
-      .in('_id', topProjectIds);
-
-    const projectsMap = new Map((projectsData || []).map(project => [project._id, project]));
-
-    const projectsWithMostLinks = Object.entries(projectCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([projectId, count]) => ({
-        projectId,
-        projectName: projectsMap.get(projectId)?.name || 'Unknown',
-        projectWebsite: projectsMap.get(projectId)?.website || null,
-        linkCount: count
-      }));
-
-    // Get top ranking keywords (rank <= 3)
-    const { data: topRankData } = await supabase
+    // Top ranking keywords (rank <= 3): exact count, not a capped row fetch
+    const { count: topRankCount } = await supabase
       .from('keywords')
-      .select('position')
-      .lte('position', 3)
-      .limit(1000);
+      .select('_id', { count: 'exact', head: true })
+      .lte('position', 3);
 
-    // Calculate paid users - users who have active subscription orders
-    const paidUserIds = new Set<string>();
-    (activeOrdersRes.data || []).forEach((order: any) => {
-      if (order.userId) {
-        paidUserIds.add(order.userId);
-      }
-    });
-
-    const paidUsersCount = paidUserIds.size;
-    const freeUsersCount = (usersRes.count || 0) - paidUsersCount;
+    // Paid users = owners (super_admin) of organizations whose billingMeta resolves to a
+    // live non-free plan (Stripe / Dodo / admin grant). The old code read the legacy
+    // Paddle `orders` table, which nothing has written to since Paddle was removed.
+    const paidUsersCount = Number(m.paidUsers || 0);
+    const freeUsersCount = Math.max(0, (usersRes.count || 0) - paidUsersCount);
 
     return {
       totalLinks: linksRes.count || 0,
       activeLinks: activeLinksCount,
+      pausedLinks: pausedLinksCount,
       disabledLinks: disabledLinksCount,
       totalKeywords: keywordsRes.count || 0,
       activeKeywords: activeKeywordsCount,
@@ -411,12 +317,13 @@ async function getMonitoringStats() {
       disabledProjects: disabledProjectsCount,
       totalUsers: usersRes.count || 0,
       paidUsers: paidUsersCount,
+      paidOrganizations: Number(m.paidOrganizations || 0),
       freeUsers: freeUsersCount,
       totalWorkspaces: workspacesRes.count || 0,
       foundLinks,
       indexedLinks,
       issueLinks,
-      topRankKeywords: topRankData?.length || 0,
+      topRankKeywords: topRankCount || 0,
       usersWithMostLinks,
       projectsWithMostLinks,
       recentActivity: {
@@ -432,6 +339,7 @@ async function getMonitoringStats() {
     return {
       totalLinks: 0,
       activeLinks: 0,
+      pausedLinks: 0,
       disabledLinks: 0,
       totalKeywords: 0,
       activeKeywords: 0,
@@ -442,6 +350,7 @@ async function getMonitoringStats() {
       disabledProjects: 0,
       totalUsers: 0,
       paidUsers: 0,
+      paidOrganizations: 0,
       freeUsers: 0,
       totalWorkspaces: 0,
       foundLinks: 0,

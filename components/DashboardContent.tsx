@@ -7,6 +7,7 @@ import DashboardViewToggle from './DashboardViewToggle';
 interface MonitoringStats {
   totalLinks: number;
   activeLinks: number;
+  pausedLinks: number;
   disabledLinks: number;
   totalKeywords: number;
   activeKeywords: number;
@@ -17,6 +18,7 @@ interface MonitoringStats {
   disabledProjects: number;
   totalUsers: number;
   paidUsers: number;
+  paidOrganizations: number;
   freeUsers: number;
   totalWorkspaces: number;
   foundLinks: number;
@@ -61,6 +63,8 @@ export default function DashboardContent({
       color: 'bg-blue-500',
       breakdown: [
         { label: 'Active', value: monitoringStats.activeLinks },
+        // Paused = project auto-paused for inactivity (engine skips it, user can resume)
+        { label: 'Paused', value: monitoringStats.pausedLinks },
         { label: 'Disabled', value: monitoringStats.disabledLinks }
       ]
     },
@@ -81,7 +85,8 @@ export default function DashboardContent({
       color: 'bg-green-500',
       breakdown: [
         { label: 'Active', value: monitoringStats.activeProjects },
-        { label: 'Inactive', value: monitoringStats.inactiveProjects }
+        { label: 'Inactive', value: monitoringStats.inactiveProjects },
+        { label: 'Disabled', value: monitoringStats.disabledProjects }
       ]
     },
     {
@@ -181,7 +186,7 @@ export default function DashboardContent({
                     } else if (item.label === 'Disabled' || item.label === 'Rejected' || item.label === 'Cancelled') {
                       dotColor = 'bg-red-500';
                       textColor = 'text-red-700';
-                    } else if (item.label === 'Inactive') {
+                    } else if (item.label === 'Inactive' || item.label === 'Paused') {
                       dotColor = 'bg-orange-500';
                       textColor = 'text-orange-700';
                     } else if (item.label === 'Pending') {
@@ -234,6 +239,18 @@ export default function DashboardContent({
                       />
                     </div>
                     <span className="text-sm font-semibold text-gray-900 w-12 text-right">{monitoringStats.activeLinks}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Paused Links</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-orange-500 rounded-full"
+                        style={{ width: `${monitoringStats.totalLinks > 0 ? (monitoringStats.pausedLinks / monitoringStats.totalLinks * 100) : 0}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 w-12 text-right">{monitoringStats.pausedLinks}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
@@ -312,10 +329,10 @@ export default function DashboardContent({
                     <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-green-500 rounded-full"
-                        style={{ width: `${monitoringStats.totalWorkspaces > 0 ? (monitoringStats.paidUsers / monitoringStats.totalWorkspaces * 100) : 0}%` }}
+                        style={{ width: `${monitoringStats.totalWorkspaces > 0 ? (monitoringStats.paidOrganizations / monitoringStats.totalWorkspaces * 100) : 0}%` }}
                       />
                     </div>
-                    <span className="text-sm font-semibold text-gray-900 w-12 text-right">{monitoringStats.paidUsers}</span>
+                    <span className="text-sm font-semibold text-gray-900 w-12 text-right">{monitoringStats.paidOrganizations}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
