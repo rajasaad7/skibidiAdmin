@@ -1,8 +1,21 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight, Copy, ChevronDown, Check, Ban } from 'lucide-react';
+import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, HelpCircle, Pause, ArrowRight, Copy, ChevronDown, Check, Ban, Plug } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+
+
+// Tooltip for the API badge: names the assistant for Linkwatcher Connect orders,
+// otherwise the order came from a partner API key.
+function getApiOrderSourceLabel(order: { apiSource?: string | null; connectorClient?: string | null }): string {
+  if (order.apiSource === 'connector') {
+    const client = (order.connectorClient || '').trim();
+    return client
+      ? `Placed via ${client} (Linkwatcher Connect AI assistant)`
+      : 'Placed via a connected AI assistant (Linkwatcher Connect)';
+  }
+  return 'Placed via the Partner API';
+}
 
 interface Order {
   _id: string;
@@ -67,8 +80,12 @@ interface Order {
   publisherUnseenAnswer?: boolean;
   // Verification
   manualVerified?: boolean;
-  // How the order was placed: 'browse' | 'featured' | 'assistant'
+  // How the order was placed: 'browse' | 'featured' | 'assistant' | 'api'
   orderSource?: string;
+  // For orderSource 'api': 'connector' when placed through a connected AI assistant
+  // (Linkwatcher Connect), otherwise a partner API key. Read from metadata in the list query.
+  apiSource?: string | null;
+  connectorClient?: string | null;
   // Relations
   domains?: {
     domainName: string;
@@ -894,10 +911,19 @@ export default function OrdersPage() {
                         {order.orderSource === 'assistant' && (
                           <span
                             className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-violet-100 text-violet-700"
-                            title="Placed via AI assistant"
+                            title="Placed via Pluto (in-app AI assistant)"
                           >
                             <Sparkles className="w-3 h-3" />
                             AI
+                          </span>
+                        )}
+                        {order.orderSource === 'api' && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-100 text-sky-700 cursor-default"
+                            title={getApiOrderSourceLabel(order)}
+                          >
+                            <Plug className="w-3 h-3" />
+                            API
                           </span>
                         )}
                       </div>

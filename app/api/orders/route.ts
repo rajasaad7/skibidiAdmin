@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
         completedAt,
         manualVerified,
         orderSource,
+        apiSource:metadata->>apiSource,
+        connectorClient:metadata->>connectorClient,
         domainId,
         domains!domainId(domainName)
       `, { count: 'exact' })
