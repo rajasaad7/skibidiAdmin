@@ -5,18 +5,6 @@ import { RefreshCw, Edit2, X, Trash2, MessageCircle, Send, XCircle, Sparkles, He
 import toast, { Toaster } from 'react-hot-toast';
 
 
-// Tooltip for the API badge: names the assistant for Linkwatcher Connect orders,
-// otherwise the order came from a partner API key.
-function getApiOrderSourceLabel(order: { apiSource?: string | null; connectorClient?: string | null }): string {
-  if (order.apiSource === 'connector') {
-    const client = (order.connectorClient || '').trim();
-    return client
-      ? `Placed via ${client} (Linkwatcher Connect AI assistant)`
-      : 'Placed via a connected AI assistant (Linkwatcher Connect)';
-  }
-  return 'Placed via the Partner API';
-}
-
 interface Order {
   _id: string;
   orderNumber: string;
@@ -918,13 +906,28 @@ export default function OrdersPage() {
                           </span>
                         )}
                         {order.orderSource === 'api' && (
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-100 text-sky-700 cursor-default"
-                            title={getApiOrderSourceLabel(order)}
-                          >
-                            <Plug className="w-3 h-3" />
-                            API
-                          </span>
+                          <div className="relative group">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-100 text-sky-700 cursor-help">
+                              <Plug className="w-3 h-3" />
+                              API
+                            </span>
+                            {/* Same dark tooltip as the users page UTM badge: anchored to the
+                                badge's left edge so it opens rightward and never clips. */}
+                            <div className="absolute top-full left-0 mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 w-64">
+                              <div className="absolute bottom-full left-2 mb-[-4px] w-2 h-2 bg-gray-900 rotate-45"></div>
+                              <div className="space-y-1 whitespace-normal break-words">
+                                <div className="font-semibold text-sky-300 border-b border-gray-700 pb-1 mb-1">Order Source</div>
+                                {order.apiSource === 'connector' ? (
+                                  <>
+                                    <div><span className="text-gray-400">Channel:</span> AI assistant (Linkwatcher Connect)</div>
+                                    <div><span className="text-gray-400">Assistant:</span> {(order.connectorClient || '').trim() || 'Unknown'}</div>
+                                  </>
+                                ) : (
+                                  <div><span className="text-gray-400">Channel:</span> Partner API (API key)</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
                     </td>
