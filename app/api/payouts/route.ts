@@ -16,7 +16,7 @@ async function signKycPath(path: string | null): Promise<string | null> {
 async function getKycForUser(userId: string) {
   const { data: tasks } = await supabase
     .from('publisher_kyc_tasks')
-    .select('_id, title, status, "taskType", "submittedCountry", "submittedDocType", "submittedDocNumber", "submittedAddress", "submittedAt", "reviewNote", "completedAt"')
+    .select('_id, title, status, "taskType", "submittedCountry", "submittedDocType", "submittedDocNumber", "submittedDocExpiry", "submittedAddress", "submittedAt", "reviewNote", "completedAt"')
     .eq('userId', userId)
     .order('"submittedAt"', { ascending: false, nullsFirst: false })
     .order('"createdAt"', { ascending: false });

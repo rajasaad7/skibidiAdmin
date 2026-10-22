@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
-import { BadgeCheck, RefreshCw, Eye, ExternalLink, CheckCircle, Clock, Hourglass, X, FileText, Plus } from 'lucide-react';
+import { BadgeCheck, RefreshCw, Eye, ExternalLink, CheckCircle, Clock, Hourglass, X, FileText, Plus, CalendarX } from 'lucide-react';
 
 interface KycUser {
   _id: string;
@@ -31,6 +31,7 @@ interface KycTask {
   submittedCountry: string | null;
   submittedDocType: string | null;
   submittedDocNumber: string | null;
+  submittedDocExpiry: string | null; // YYYY-MM-DD printed on the identity document
   submittedAddress: string | null;
   submittedAt: string | null;
   createdAt: string;
@@ -50,6 +51,38 @@ const STATUS_LABEL: Record<string, string> = {
   completed: 'Approved',
 };
 
+// Today's date as YYYY-MM-DD (UTC) for expiry comparisons, same basis as the API.
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+// Render a stored YYYY-MM-DD date without timezone drift.
+function formatDateOnly(v: string | null | undefined): string {
+  if (!v) return '--';
+  const [y, m, d] = String(v).slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return String(v);
+  return format(new Date(y, m - 1, d), 'MMM d, yyyy');
+}
+
+// Expiry date with a red "Expired" / amber "Expires soon" (within 30 days) marker.
+function ExpiryCell({ value }: { value: string | null | undefined }) {
+  if (!value) return <span className="text-gray-400">--</span>;
+  const today = todayISO();
+  const expired = value < today;
+  const soonCutoff = new Date();
+  soonCutoff.setUTCDate(soonCutoff.getUTCDate() + 30);
+  const expiringSoon = !expired && value <= soonCutoff.toISOString().slice(0, 10);
+  return (
+    <div>
+      <div className={`font-medium ${expired ? 'text-red-600' : expiringSoon ? 'text-amber-700' : 'text-gray-900'}`}>{formatDateOnly(value)}</div>
+      {expired && (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-50 text-red-700 mt-0.5">Expired</span>
+      )}
+      {expiringSoon && (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 mt-0.5">Expires soon</span>
+      )}
+    </div>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const map: Record<string, string> = {
     in_review: 'bg-amber-50 text-amber-700',
@@ -65,7 +98,7 @@ function StatusPill({ status }: { status: string }) {
 
 export default function KycCheckPage() {
   const [tasks, setTasks] = useState<KycTask[]>([]);
-  const [counts, setCounts] = useState<Record<string, number>>({ in_review: 0, active: 0, completed: 0 });
+  const [counts, setCounts] = useState<Record<string, number>>({ in_review: 0, active: 0, completed: 0, expired: 0 });
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('in_review');
   const [selected, setSelected] = useState<KycTask | null>(null);
@@ -173,7 +206,7 @@ export default function KycCheckPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm text-gray-600">In Review</div>
@@ -198,19 +231,34 @@ export default function KycCheckPage() {
           <div className="text-2xl font-bold text-gray-900">{counts.completed || 0}</div>
           <div className="text-sm text-gray-600">verified publishers</div>
         </div>
+        <button
+          type="button"
+          onClick={() => setFilter('expired')}
+          className={`bg-white rounded-lg shadow-sm p-6 border text-left transition ${filter === 'expired' ? 'border-red-300 ring-2 ring-red-100' : 'border-gray-200 hover:border-red-200'}`}
+          title="Approved publishers whose identity document has passed its expiry date"
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm text-gray-600">Expired ID</div>
+            <CalendarX className="w-5 h-5 text-red-600" />
+          </div>
+          <div className={`text-2xl font-bold ${(counts.expired || 0) > 0 ? 'text-red-600' : 'text-gray-900'}`}>{counts.expired || 0}</div>
+          <div className="text-sm text-gray-600">approved, document expired</div>
+        </button>
       </div>
 
       {/* Filters */}
       <div className="mb-6 flex gap-2">
-        {['in_review', 'active', 'completed', 'all'].map((status) => (
+        {['in_review', 'active', 'completed', 'expired', 'all'].map((status) => (
           <button
             key={`filter-${status}`}
             onClick={() => setFilter(status)}
             className={`px-4 py-2 rounded-lg font-medium transition ${
-              filter === status ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              filter === status
+                ? status === 'expired' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
             }`}
           >
-            {status === 'in_review' ? 'In Review' : status === 'active' ? 'Awaiting Submission' : status === 'completed' ? 'Approved' : 'All'}
+            {status === 'in_review' ? 'In Review' : status === 'active' ? 'Awaiting Submission' : status === 'completed' ? 'Approved' : status === 'expired' ? 'Expired ID' : 'All'}
           </button>
         ))}
       </div>
@@ -223,6 +271,7 @@ export default function KycCheckPage() {
               <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 <th className="px-6 py-3">Publisher</th>
                 <th className="px-6 py-3">Document</th>
+                <th className="px-6 py-3">Expires</th>
                 <th className="px-6 py-3">Country</th>
                 <th className="px-6 py-3">Submitted</th>
                 <th className="px-6 py-3">Status</th>
@@ -231,9 +280,9 @@ export default function KycCheckPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500">Loading...</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">Loading...</td></tr>
               ) : tasks.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500">No KYC submissions in this view.</td></tr>
+                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">{filter === 'expired' ? 'No approved publishers with an expired document.' : 'No KYC submissions in this view.'}</td></tr>
               ) : (
                 tasks.map((t) => (
                   <tr key={t._id} className="hover:bg-gray-50 text-sm">
@@ -244,6 +293,9 @@ export default function KycCheckPage() {
                     <td className="px-6 py-4 text-gray-700">
                       {t.submittedDocType ? t.submittedDocType.replace(/_/g, ' ') : '--'}
                       {t.submittedDocNumber && <div className="text-xs text-gray-500">{t.submittedDocNumber}</div>}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {t.taskType === 'proof_of_address' ? <span className="text-gray-400">--</span> : <ExpiryCell value={t.submittedDocExpiry} />}
                     </td>
                     <td className="px-6 py-4 text-gray-700">{t.submittedCountry || '--'}</td>
                     <td className="px-6 py-4 text-gray-700">
@@ -305,6 +357,7 @@ export default function KycCheckPage() {
                     <div><div className="text-gray-500">Country</div><div className="font-medium text-gray-900">{selected.submittedCountry || '--'}</div></div>
                     <div><div className="text-gray-500">Document type</div><div className="font-medium text-gray-900 capitalize">{selected.submittedDocType?.replace(/_/g, ' ') || '--'}</div></div>
                     <div><div className="text-gray-500">Document number</div><div className="font-medium text-gray-900">{selected.submittedDocNumber || '--'}</div></div>
+                    <div><div className="text-gray-500">Expiry date</div><ExpiryCell value={selected.submittedDocExpiry} /></div>
                   </>
                 )}
                 <div><div className="text-gray-500">Submitted</div><div className="font-medium text-gray-900">{selected.submittedAt ? format(new Date(selected.submittedAt), 'MMM d, yyyy h:mm a') : '--'}</div></div>

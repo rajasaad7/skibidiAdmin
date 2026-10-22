@@ -11,11 +11,14 @@ async function signPath(path: string | null): Promise<string | null> {
   return data?.signedUrl || null;
 }
 
-// GET /api/kyc-check?status=in_review|active|completed|all
+// GET /api/kyc-check?status=in_review|active|completed|expired|all
 // Lists publisher KYC submissions with the user attached + signed document URLs.
+// `expired` = approved identity documents whose printed expiry date has passed
+// (submittedDocExpiry < today, UTC), so the team can re-verify those publishers.
 export async function GET(request: NextRequest) {
   try {
     const status = request.nextUrl.searchParams.get('status') || 'in_review';
+    const today = new Date().toISOString().slice(0, 10);
 
     let query = supabase
       .from('publisher_kyc_tasks')
@@ -23,7 +26,9 @@ export async function GET(request: NextRequest) {
       .order('"submittedAt"', { ascending: false, nullsFirst: false })
       .order('"createdAt"', { ascending: false });
 
-    if (status && status !== 'all') {
+    if (status === 'expired') {
+      query = query.eq('status', 'completed').lt('submittedDocExpiry', today);
+    } else if (status && status !== 'all') {
       query = query.eq('status', status);
     }
 
@@ -67,11 +72,17 @@ export async function GET(request: NextRequest) {
     );
 
     // Counts for the stat cards / filters.
-    const counts: Record<string, number> = { in_review: 0, active: 0, completed: 0 };
+    const counts: Record<string, number> = { in_review: 0, active: 0, completed: 0, expired: 0 };
     const { data: allRows } = await supabase.from('publisher_kyc_tasks').select('status');
     (allRows || []).forEach((r: any) => {
       if (counts[r.status] !== undefined) counts[r.status] += 1;
     });
+    const { count: expiredCount } = await supabase
+      .from('publisher_kyc_tasks')
+      .select('_id', { count: 'exact', head: true })
+      .eq('status', 'completed')
+      .lt('submittedDocExpiry', today);
+    counts.expired = expiredCount || 0;
 
     return NextResponse.json({ success: true, tasks, counts });
   } catch (error: any) {

@@ -80,6 +80,7 @@ interface KycTask {
   submittedCountry?: string | null;
   submittedDocType?: string | null;
   submittedDocNumber?: string | null;
+  submittedDocExpiry?: string | null; // YYYY-MM-DD printed on the identity document
   submittedAddress?: string | null;
   submittedAt?: string | null;
   reviewNote?: string | null;
@@ -694,6 +695,13 @@ export default function PayoutsPage() {
                         { label: 'Country', key: 'submittedCountry', value: task.submittedCountry },
                         { label: 'Document Type', key: 'submittedDocType', value: task.submittedDocType },
                         { label: 'Document Number', key: 'submittedDocNumber', value: task.submittedDocNumber, copyable: true },
+                        {
+                          label: 'Document Expiry',
+                          key: 'submittedDocExpiry',
+                          value: task.submittedDocExpiry
+                            ? `${task.submittedDocExpiry}${task.submittedDocExpiry < new Date().toISOString().slice(0, 10) ? ' (EXPIRED)' : ''}`
+                            : null,
+                        },
                         { label: 'Address', key: 'submittedAddress', value: task.submittedAddress, copyable: true },
                       ].filter((f) => f.value && String(f.value).trim() !== '');
 
