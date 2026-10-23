@@ -33,7 +33,11 @@ export async function GET(request: NextRequest) {
 
     if (status === 'overdue') {
       const nowIso = new Date().toISOString();
-      const terminalStatuses = ['pending_payment', 'completed', 'refunded', 'cancelled'];
+      // Not overdue: terminal states, plus states where the delivery clock is
+      // PAUSED (waiting on the buyer: clarification, article review, link review).
+      // The stored deadlineAt is stale while paused; the DB trigger
+      // order_delivery_clock_pause_trigger extends it on resume.
+      const terminalStatuses = ['pending_payment', 'completed', 'refunded', 'cancelled', 'rejected', 'disputed', 'refund_requested', 'clarification_requested', 'article_submitted', 'submitted'];
       query = query
         .lt('deadlineAt', nowIso)
         .not('status', 'in', `(${terminalStatuses.join(',')})`);

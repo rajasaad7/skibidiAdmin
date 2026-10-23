@@ -1338,10 +1338,11 @@ export default function OrdersPage() {
 
               {/* TAT (Turnaround Time) Status. Shown only for working statuses
                   where the delivery clock is actually ticking. It is hidden
-                  while frozen for clarification (the DB deadline is stale then)
+                  while paused (clarification, article review, link review: the
+                  DB deadline is stale then, the trigger extends it on resume)
                   and for terminal / pre-work statuses. */}
               {editingOrder.deadlineAt && !editingOrder.completedAt &&
-               ['paid', 'accepted', 'in_progress', 'article_writing', 'article_approved', 'revision_requested', 'submitted'].includes(editingOrder.status) &&
+               ['paid', 'accepted', 'in_progress', 'article_writing', 'article_revision_requested', 'article_approved', 'revision_requested'].includes(editingOrder.status) &&
                (() => {
                 const tatInfo = calculateTATRemaining(editingOrder);
                 if (!tatInfo) return null;

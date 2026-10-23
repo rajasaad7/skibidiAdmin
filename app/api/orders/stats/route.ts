@@ -4,7 +4,10 @@ import { supabase } from '@/lib/supabase';
 export async function GET(request: NextRequest) {
   try {
     const nowIso = new Date().toISOString();
-    const terminalStatuses = ['pending_payment', 'completed', 'refunded', 'cancelled'];
+    // Overdue = past deadlineAt while the delivery clock is actually running
+    // (keep in sync with app/api/orders/route.ts). Paused states (clarification,
+    // article review, link review) and terminal states are excluded.
+    const terminalStatuses = ['pending_payment', 'completed', 'refunded', 'cancelled', 'rejected', 'disputed', 'refund_requested', 'clarification_requested', 'article_submitted', 'submitted'];
 
     const countQuery = (build: (q: any) => any) =>
       build(supabase.from('marketplace_orders').select('_id', { count: 'exact', head: true }));
