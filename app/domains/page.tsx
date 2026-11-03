@@ -1565,9 +1565,10 @@ export default function DomainsPage() {
 
   const startDaUpdateProcess = async () => {
     daStopRef.current = false;
-    const CHUNK = 5; // dapachecker: 5 URLs/request
-    // Rate limit is 60 URLs/min. At 5 URLs/chunk that's max 12 chunks/min,
-    // i.e. one chunk every 5s. Use 5.5s for a safety margin (~55 URLs/min).
+    const CHUNK = 20; // dapachecker: 20 URLs/request (must match BATCH_SIZE in api/domains/update-da-sheet)
+    // Pause between chunks. At 20 URLs/chunk every 5.5s that is ~218 URLs/min;
+    // if the dapachecker plan is still capped at 60 URLs/min, raise this to ~21000
+    // (a 429 is retried after RATE_LIMIT_WAIT_MS, so no rows are lost either way).
     const PACE_MS = 5500;
     const MAX_429_RETRIES = 5; // on a 429, wait and retry the same chunk
     const RATE_LIMIT_WAIT_MS = 65000; // ~1 min: lets the per-minute window reset

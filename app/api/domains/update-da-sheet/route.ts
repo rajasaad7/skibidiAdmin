@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // dapachecker Basic plan limits
-const BATCH_SIZE = 5; // 5 URLs per request (also the chunk size per client call)
+const BATCH_SIZE = 20; // 20 URLs per request (also the chunk size per client call; keep CHUNK in domains/page.tsx in sync)
 
 // Sheet layout (tab "2"): A=Domain, B=DR, C=DA, D=Spam Score
 const SHEET_TAB = '2';

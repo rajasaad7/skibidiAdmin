@@ -32,7 +32,7 @@ function clean(d: string): string {
 }
 
 /**
- * Fetch DA + Spam Score for up to 5 domains in a single request.
+ * Fetch DA + Spam Score for a batch of domains in a single request (caller caps the size).
  * Returns one DapaResult per input domain (always same length/order).
  */
 export async function fetchDapaBatch(
