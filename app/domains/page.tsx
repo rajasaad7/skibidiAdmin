@@ -99,13 +99,16 @@ export default function DomainsPage() {
     approved: number;
     total: number;
   } | null>(null);
-  const [rejectingNoTrafficOfferings, setRejectingNoTrafficOfferings] = useState(false);
-  const [rejectNoTrafficProgress, setRejectNoTrafficProgress] = useState<{
+  // Bulk reject sweeps from the Pending Offerings menu (0 traffic / prohibited niche).
+  // Only one runs at a time; `kind` tells the trigger button which one is busy.
+  const [rejectSweep, setRejectSweep] = useState<{
+    kind: 'noTraffic' | 'prohibited';
     phase: string;
     scanned: number;
     rejected: number;
     total: number;
   } | null>(null);
+  const rejectingPendingOfferings = rejectSweep !== null;
   const [uploadResult, setUploadResult] = useState<{ success: boolean; updatedCount: number; errors?: string[]; totalProcessed: number } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importType, setImportType] = useState<'file' | 'paste'>('file');
@@ -432,6 +435,78 @@ export default function DomainsPage() {
     });
   };
 
+  // Runs one NDJSON reject sweep endpoint and resolves with its final outcome.
+  const runRejectSweep = async (
+    kind: 'noTraffic' | 'prohibited',
+    endpoint: string
+  ): Promise<{ count: number; domainCount: number } | null> => {
+    setRejectSweep({ kind, phase: 'scanning', scanned: 0, rejected: 0, total: 0 });
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error('Failed to start rejection');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const outcome: { result: { count: number; domainCount: number } | null; error: string | null } = {
+      result: null,
+      error: null
+    };
+
+    const handleEvent = (evt: any) => {
+      if (evt.type === 'scan') {
+        setRejectSweep((prev) => ({
+          kind,
+          phase: 'scanning',
+          scanned: evt.scanned,
+          rejected: prev?.rejected || 0,
+          total: prev?.total || 0
+        }));
+      } else if (evt.type === 'phase') {
+        setRejectSweep((prev) => ({
+          kind,
+          phase: evt.phase,
+          scanned: prev?.scanned || 0,
+          rejected: prev?.rejected || 0,
+          total: evt.total ?? prev?.total ?? 0
+        }));
+      } else if (evt.type === 'progress') {
+        setRejectSweep((prev) => ({
+          kind,
+          phase: 'rejecting',
+          scanned: prev?.scanned || 0,
+          rejected: evt.rejected,
+          total: evt.total
+        }));
+      } else if (evt.type === 'done') {
+        outcome.result = { count: evt.count, domainCount: evt.domainCount };
+      } else if (evt.type === 'error') {
+        outcome.error = evt.error;
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.trim()) handleEvent(JSON.parse(line));
+      }
+    }
+    if (buffer.trim()) handleEvent(JSON.parse(buffer));
+
+    if (outcome.error) throw new Error(outcome.error);
+    return outcome.result;
+  };
+
   const handleRejectAllNoTraffic = () => {
     setConfirmModal({
       isOpen: true,
@@ -440,70 +515,8 @@ export default function DomainsPage() {
       confirmText: 'Reject',
       cancelText: 'Cancel',
       onConfirm: async () => {
-        setRejectingNoTrafficOfferings(true);
-        setRejectNoTrafficProgress({ phase: 'scanning', scanned: 0, rejected: 0, total: 0 });
         try {
-          const response = await fetch('/api/domains/reject-pending-no-traffic', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-
-          if (!response.ok || !response.body) {
-            throw new Error('Failed to start rejection');
-          }
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-          const outcome: { result: { count: number; domainCount: number } | null; error: string | null } = {
-            result: null,
-            error: null
-          };
-
-          const handleEvent = (evt: any) => {
-            if (evt.type === 'scan') {
-              setRejectNoTrafficProgress((prev) => ({
-                phase: 'scanning',
-                scanned: evt.scanned,
-                rejected: prev?.rejected || 0,
-                total: prev?.total || 0
-              }));
-            } else if (evt.type === 'phase') {
-              setRejectNoTrafficProgress((prev) => ({
-                phase: evt.phase,
-                scanned: prev?.scanned || 0,
-                rejected: prev?.rejected || 0,
-                total: evt.total ?? prev?.total ?? 0
-              }));
-            } else if (evt.type === 'progress') {
-              setRejectNoTrafficProgress((prev) => ({
-                phase: 'rejecting',
-                scanned: prev?.scanned || 0,
-                rejected: evt.rejected,
-                total: evt.total
-              }));
-            } else if (evt.type === 'done') {
-              outcome.result = { count: evt.count, domainCount: evt.domainCount };
-            } else if (evt.type === 'error') {
-              outcome.error = evt.error;
-            }
-          };
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            for (const line of lines) {
-              if (line.trim()) handleEvent(JSON.parse(line));
-            }
-          }
-          if (buffer.trim()) handleEvent(JSON.parse(buffer));
-
-          if (outcome.error) throw new Error(outcome.error);
-
-          const result = outcome.result;
+          const result = await runRejectSweep('noTraffic', '/api/domains/reject-pending-no-traffic');
           setAlertModal({
             isOpen: true,
             title: 'Success',
@@ -522,8 +535,41 @@ export default function DomainsPage() {
             type: 'error'
           });
         } finally {
-          setRejectingNoTrafficOfferings(false);
-          setRejectNoTrafficProgress(null);
+          setRejectSweep(null);
+        }
+      }
+    });
+  };
+
+  const handleRejectAllProhibited = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Reject Pending Offerings (Prohibited Niche)',
+      message: 'Reject all pending offerings whose domain is flagged as a prohibited niche (gambling, adult, CBD, alcohol, vaping, pharma, weapons)? Rejection reason will be "Irrelevant or prohibited niche". Already approved or rejected offerings are never touched. This cannot be undone in bulk.',
+      confirmText: 'Reject',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const result = await runRejectSweep('prohibited', '/api/domains/reject-pending-prohibited');
+          setAlertModal({
+            isOpen: true,
+            title: 'Success',
+            message: result && result.count > 0
+              ? `Rejected ${result.count} pending offering(s) across ${result.domainCount} prohibited-niche domain(s) as "Irrelevant or prohibited niche".`
+              : 'No pending offerings on prohibited-niche domains.',
+            type: 'success'
+          });
+          fetchDomains();
+        } catch (error: any) {
+          console.error('Error rejecting prohibited-niche offerings:', error);
+          setAlertModal({
+            isOpen: true,
+            title: 'Error',
+            message: error?.message || 'Error rejecting offerings',
+            type: 'error'
+          });
+        } finally {
+          setRejectSweep(null);
         }
       }
     });
@@ -1122,52 +1168,6 @@ export default function DomainsPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
-
-  const exportNADomainsToCSV = async () => {
-    try {
-      // Fetch all domains with N/A metrics from the API
-      const response = await fetch('/api/domains/export-na-domains');
-      const data = await response.json();
-
-      if (!data.success || data.domains.length === 0) {
-        setAlertModal({
-          isOpen: true,
-          title: 'No Domains Found',
-          message: 'No domains found with all metrics as N/A',
-          type: 'info'
-        });
-        return;
-      }
-
-      // Create CSV content with only domain names
-      const headers = ['Domain Name'];
-      const rows = data.domains.map((domain: Domain) => [domain.domainName]);
-
-      const csvContent = [
-        headers.join(','),
-        ...rows.map((row: string[]) => row.map((cell: string) => `"${cell}"`).join(','))
-      ].join('\n');
-
-      // Create download link
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `domains_na_metrics_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error('Error exporting N/A domains:', error);
-      setAlertModal({
-        isOpen: true,
-        title: 'Error',
-        message: 'Error exporting domains',
-        type: 'error'
-      });
-    }
   };
 
   const syncNADomainsFromSheet = async () => {
@@ -3302,7 +3302,7 @@ export default function DomainsPage() {
             <RefreshCw className="w-4 h-4" />
           </button>
 
-          {/* Pending Offerings menu: the two traffic-based bulk sweeps */}
+          {/* Pending Offerings menu: bulk approve / reject sweeps over pending offerings */}
           <div className="relative">
             <button
               onClick={() => {
@@ -3311,7 +3311,7 @@ export default function DomainsPage() {
               }}
               className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition"
             >
-              {approvingTrafficOfferings || rejectingNoTrafficOfferings ? (
+              {approvingTrafficOfferings || rejectingPendingOfferings ? (
                 <RefreshCw className={`w-4 h-4 animate-spin ${approvingTrafficOfferings ? 'text-green-600' : 'text-red-600'}`} />
               ) : (
                 <CheckCircle className="w-4 h-4 text-gray-500" />
@@ -3320,9 +3320,9 @@ export default function DomainsPage() {
                 ? approveProgress?.phase === 'approving'
                   ? `Approving ${approveProgress?.approved ?? 0}/${approveProgress?.total ?? 0}...`
                   : 'Scanning...'
-                : rejectingNoTrafficOfferings
-                  ? rejectNoTrafficProgress?.phase === 'rejecting'
-                    ? `Rejecting ${rejectNoTrafficProgress?.rejected ?? 0}/${rejectNoTrafficProgress?.total ?? 0}...`
+                : rejectSweep
+                  ? rejectSweep.phase === 'rejecting'
+                    ? `Rejecting ${rejectSweep.rejected}/${rejectSweep.total}...`
                     : 'Scanning...'
                   : 'Pending Offerings'}
               <ChevronDown className="w-4 h-4 text-gray-400" />
@@ -3334,7 +3334,7 @@ export default function DomainsPage() {
                     handleApproveAllWithTraffic();
                     setShowPendingDropdown(false);
                   }}
-                  disabled={approvingTrafficOfferings || rejectingNoTrafficOfferings}
+                  disabled={approvingTrafficOfferings || rejectingPendingOfferings}
                   className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
@@ -3348,13 +3348,27 @@ export default function DomainsPage() {
                     handleRejectAllNoTraffic();
                     setShowPendingDropdown(false);
                   }}
-                  disabled={approvingTrafficOfferings || rejectingNoTrafficOfferings}
+                  disabled={approvingTrafficOfferings || rejectingPendingOfferings}
                   className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <XCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
                   <span>
                     <span className="block text-sm font-medium text-gray-900">Reject Pending (0 Traffic)</span>
                     <span className="block text-[11px] text-gray-500">0 traffic with real DA / DR / Spam stats, reason "No / low organic traffic"</span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    handleRejectAllProhibited();
+                    setShowPendingDropdown(false);
+                  }}
+                  disabled={approvingTrafficOfferings || rejectingPendingOfferings}
+                  className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                  <span>
+                    <span className="block text-sm font-medium text-gray-900">Reject Pending (Prohibited Niche)</span>
+                    <span className="block text-[11px] text-gray-500">Every pending offering on a flagged domain, reason "Irrelevant or prohibited niche"</span>
                   </span>
                 </button>
               </div>
@@ -3385,16 +3399,6 @@ export default function DomainsPage() {
             {showSheetsDropdown && (
               <div className="absolute right-0 mt-2 w-60 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1">
                 <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">N/A Stats</div>
-                <button
-                  onClick={() => {
-                    exportNADomainsToCSV();
-                    setShowSheetsDropdown(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-4 py-2 text-left hover:bg-gray-50 transition"
-                >
-                  <Download className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm text-gray-700">Export N/A Domains</span>
-                </button>
                 <button
                   onClick={() => {
                     uploadNADomainsToSheet();
