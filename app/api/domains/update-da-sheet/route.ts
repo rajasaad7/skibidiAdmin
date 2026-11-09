@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchDapaBatch } from '@/lib/dapachecker-service';
+import { fetchDapaBatch, RAPIDAPI_DAPA_MAX_URLS } from '@/lib/rapidapi-dapa-service';
 
 // googleapis needs the Node.js runtime (not edge). Each call is short
 // (list = one read; chunk = one fetch + one write), but allow headroom.
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// dapachecker Basic plan limits
-const BATCH_SIZE = 20; // 20 URLs per request (also the chunk size per client call; keep CHUNK in domains/page.tsx in sync)
+// RapidAPI "Bulk Moz DA PA SS Checker": up to 500 URLs per request and the plan
+// quota counts REQUESTS, so send the biggest batch the function timeout allows.
+// Override with RAPIDAPI_DAPA_BATCH_SIZE (lower it if a chunk call times out).
+// The client reads this value from the `list` response, so nothing to keep in sync.
+const BATCH_SIZE = Math.min(
+  RAPIDAPI_DAPA_MAX_URLS,
+  Math.max(1, Number(process.env.RAPIDAPI_DAPA_BATCH_SIZE) || RAPIDAPI_DAPA_MAX_URLS)
+);
 
 // Sheet layout (tab "2"): A=Domain, B=DR, C=DA, D=Spam Score
 const SHEET_TAB = '2';
@@ -35,10 +41,10 @@ async function getSheets() {
 
 export async function POST(request: NextRequest) {
   try {
-    const apiKey = process.env.DAPACHECKER_API_KEY;
+    const apiKey = process.env.RAPIDAPI_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: 'DAPACHECKER_API_KEY not configured in environment.' },
+        { success: false, error: 'RAPIDAPI_KEY not configured in environment.' },
         { status: 500 }
       );
     }
@@ -69,7 +75,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return NextResponse.json({ success: true, pending });
+      return NextResponse.json({ success: true, pending, batchSize: BATCH_SIZE });
     }
 
     // ── Mode 2: process a single chunk (≤ BATCH_SIZE items) ──

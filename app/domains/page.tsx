@@ -155,7 +155,7 @@ export default function DomainsPage() {
   const [loadingUncategorizedList, setLoadingUncategorizedList] = useState(false);
   const [showApproveDropdown, setShowApproveDropdown] = useState(false);
   const [showMoreActionsDropdown, setShowMoreActionsDropdown] = useState(false);
-  // ── DA & Spam Score sheet update (dapachecker.org) ──
+  // ── DA & Spam Score sheet update (RapidAPI Bulk Moz DA PA SS Checker) ──
   const [showDaModal, setShowDaModal] = useState(false);
   const [daMinimized, setDaMinimized] = useState(false);
   const daStopRef = useRef(false);
@@ -1543,13 +1543,13 @@ export default function DomainsPage() {
     setLiveCategorizationStatus(prev => prev ? { ...prev, stopping: true } : prev);
   };
 
-  // ── Fetch DA + Spam Score from dapachecker and fill empty sheet rows ──
+  // ── Fetch DA + Spam Score from RapidAPI (Moz data) and fill empty sheet rows ──
   const handleUpdateDaFromSheet = () => {
     setConfirmModal({
       isOpen: true,
       title: 'Update DA & Spam Score',
       message:
-        'Fetch DA & Spam Score from dapachecker.org for every empty (or ERROR) row in the Google Sheet and fill them in. This uses dapachecker credits (1 per domain). Continue?',
+        'Fetch DA & Spam Score (Moz data via RapidAPI) for every empty (or ERROR) row in the Google Sheet and fill them in. Each request covers up to 500 domains and counts once against the RapidAPI plan quota. Continue?',
       confirmText: 'Fetch & Fill',
       cancelText: 'Cancel',
       onConfirm: async () => {
@@ -1565,13 +1565,13 @@ export default function DomainsPage() {
 
   const startDaUpdateProcess = async () => {
     daStopRef.current = false;
-    const CHUNK = 20; // dapachecker: 20 URLs/request (must match BATCH_SIZE in api/domains/update-da-sheet)
-    // Pause between chunks. At 20 URLs/chunk every 5.5s that is ~218 URLs/min;
-    // if the dapachecker plan is still capped at 60 URLs/min, raise this to ~21000
-    // (a 429 is retried after RATE_LIMIT_WAIT_MS, so no rows are lost either way).
-    const PACE_MS = 5500;
-    const MAX_429_RETRIES = 5; // on a 429, wait and retry the same chunk
-    const RATE_LIMIT_WAIT_MS = 65000; // ~1 min: lets the per-minute window reset
+    // Chunk size comes from the route's `list` response (RapidAPI allows up to 500 URLs
+    // per request and bills per REQUEST, so the server sends the biggest batch it can).
+    let CHUNK = 500;
+    // Short pause between chunks: RapidAPI throttles per request, not per URL.
+    const PACE_MS = 1500;
+    const MAX_429_RETRIES = 5; // on a per-second 429, wait and retry the same chunk
+    const RATE_LIMIT_WAIT_MS = 5000; // RapidAPI Pro plan: 1 request/second, a few seconds clears it
 
     setDaProgress({
       isProcessing: true,
@@ -1597,6 +1597,7 @@ export default function DomainsPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to read sheet');
       pending = data.pending || [];
+      if (Number(data.batchSize) > 0) CHUNK = Math.min(500, Number(data.batchSize));
     } catch (error: any) {
       setDaProgress((prev) =>
         prev ? { ...prev, isProcessing: false, message: error.message || 'Failed to read sheet.' } : prev
@@ -1615,7 +1616,7 @@ export default function DomainsPage() {
       prev ? { ...prev, total: pending.length, message: `Found ${pending.length} domain(s) to update.` } : prev
     );
 
-    // Step 2: loop through chunks of 5, updating the modal after each
+    // Step 2: loop through chunks of CHUNK domains, updating the modal after each
     let updated = 0;
     let failed = 0;
     let processed = 0;
@@ -1640,16 +1641,26 @@ export default function DomainsPage() {
           const results = data.success ? data.results || [] : [];
 
           // Detect a rate-limit: route reports it per-row as a 429 error.
-          const isRateLimited =
-            (!data.success && /429|rate limit/i.test(data.error || '')) ||
-            results.some((r: any) => r.status === 'error' && /429|rate limit/i.test(r.error || ''));
+          // A monthly QUOTA 429 cannot be waited out: stop the run instead of retrying.
+          const errText = [data.error || '', ...results.map((r: any) => (r.status === 'error' ? r.error || '' : ''))].join(' ');
+          const isQuotaExceeded = /quota exceeded/i.test(errText);
+          const isRateLimited = !isQuotaExceeded && /429|rate limit/i.test(errText);
+
+          if (isQuotaExceeded) {
+            daStopRef.current = true;
+            setDaProgress((prev) =>
+              prev ? { ...prev, message: 'RapidAPI monthly quota exceeded. Upgrade the plan and run again; the remaining rows stay empty.' } : prev
+            );
+            chunkResults = results;
+            break;
+          }
 
           if (isRateLimited && attempt < MAX_429_RETRIES) {
             rateLimited = true;
             const waitS = Math.round(RATE_LIMIT_WAIT_MS / 1000);
             for (let s = waitS; s > 0 && !daStopRef.current; s--) {
               setDaProgress((prev) =>
-                prev ? { ...prev, message: `Rate limit hit — waiting ${s}s for the per-minute window to reset…` } : prev
+                prev ? { ...prev, message: `Rate limit hit, waiting ${s}s before retrying…` } : prev
               );
               await new Promise((r) => setTimeout(r, 1000));
             }
@@ -1698,7 +1709,7 @@ export default function DomainsPage() {
           : prev
       );
 
-      // Pace between chunks to respect 60 URLs/min (skip after the last one).
+      // Small pause between chunks (skip after the last one).
       // If we just waited out a rate limit, the window already reset — no extra pause.
       if (i + CHUNK < pending.length && !daStopRef.current && !rateLimited) {
         await new Promise((r) => setTimeout(r, PACE_MS));
@@ -3628,7 +3639,7 @@ export default function DomainsPage() {
           <button
             onClick={handleUpdateDaFromSheet}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 transition"
-            title="Fetch DA & Spam Score from dapachecker.org and fill empty rows in the Google Sheet"
+            title="Fetch DA & Spam Score (Moz data via RapidAPI) and fill empty rows in the Google Sheet"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Get DA &amp; Spam Score
