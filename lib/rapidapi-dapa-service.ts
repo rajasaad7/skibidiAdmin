@@ -11,8 +11,8 @@
 //             page_authority, spam_score, last_crawled, pages_crawled_from_pld,
 //             fqdn, pld, url, ... } } }
 //           Keys are the normalised domain (https://www.fb.com/ -> "fb.com").
-//           A domain Moz never crawled comes back with domain_authority 1,
-//           spam_score null, last_crawled null: we report it as not found.
+//           Entries missing from `data` are reported as not found; a null
+//           spam_score (never crawled) is treated as 0 by the route.
 // ============================================================
 
 const RAPIDAPI_HOST = 'bulk-moz-da-pa-ss-checker.p.rapidapi.com';
@@ -125,12 +125,11 @@ export async function fetchDapaBatch(domains: string[], apiKey: string): Promise
 
     if (!match) return { domain, da: null, spamScore: null, found: false };
 
+    // Trust Moz as-is: a domain Moz never crawled can still carry a real DA from its
+    // backlinks (e.g. thefoxsports.co.uk DA 8 with last_crawled null), so every entry
+    // present in the response counts as found. A null spam_score means 0.
     const da = toNum(match.domain_authority ?? match.da);
     const ss = toNum(match.spam_score ?? match.ss);
-    const crawled = Boolean(match.last_crawled) || toNum(match.pages_crawled_from_pld) !== 0;
-
-    // Moz has no data for this domain (placeholder DA 1, no spam score, never crawled).
-    if (!crawled && ss === null) return { domain, da: null, spamScore: null, found: false };
 
     return { domain, da, spamScore: ss, found: true };
   });

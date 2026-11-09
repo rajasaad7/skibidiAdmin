@@ -2738,7 +2738,7 @@ export default function DomainsPage() {
                         {r.status === 'success'
                           ? `DA ${r.da} · SS ${r.spamScore}`
                           : r.status === 'notfound'
-                          ? 'Not found'
+                          ? 'No Moz data · DA 0 · SS 0'
                           : r.error || 'Error'}
                       </div>
                     </div>

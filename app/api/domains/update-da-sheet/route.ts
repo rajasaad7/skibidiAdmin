@@ -111,15 +111,17 @@ export async function POST(request: NextRequest) {
           dataUpdates.push({ range: `${SHEET_TAB}!${SS_COL}${item.rowNumber}`, values: [['ERROR']] });
           results.push({ domain: item.domain, rowNumber: item.rowNumber, status: 'error', error: res.error });
         } else if (res.found) {
-          const daVal = res.da === null ? '' : res.da;
+          const daVal = res.da === null ? 0 : res.da;
           const ssVal = res.spamScore === null ? 0 : res.spamScore;
           dataUpdates.push({ range: `${SHEET_TAB}!${DA_COL}${item.rowNumber}`, values: [[daVal]] });
           dataUpdates.push({ range: `${SHEET_TAB}!${SS_COL}${item.rowNumber}`, values: [[ssVal]] });
           results.push({ domain: item.domain, rowNumber: item.rowNumber, status: 'success', da: daVal, spamScore: ssVal });
         } else {
-          dataUpdates.push({ range: `${SHEET_TAB}!${DA_COL}${item.rowNumber}`, values: [['N/A']] });
-          dataUpdates.push({ range: `${SHEET_TAB}!${SS_COL}${item.rowNumber}`, values: [['N/A']] });
-          results.push({ domain: item.domain, rowNumber: item.rowNumber, status: 'notfound' });
+          // No Moz data for this domain: write 0 / 0 (user decision 2026-11-09, was N/A).
+          // 0 is not in REFILL, so the row is not re-queried on the next run.
+          dataUpdates.push({ range: `${SHEET_TAB}!${DA_COL}${item.rowNumber}`, values: [[0]] });
+          dataUpdates.push({ range: `${SHEET_TAB}!${SS_COL}${item.rowNumber}`, values: [[0]] });
+          results.push({ domain: item.domain, rowNumber: item.rowNumber, status: 'notfound', da: 0, spamScore: 0 });
         }
       });
 
