@@ -26,6 +26,20 @@ const REFILL = new Set(['', 'ERROR', 'N/A', 'NA']);
 const needsFill = (v: any) =>
   REFILL.has(String(v == null ? '' : v).trim().toUpperCase());
 
+// Only real domains go to the API: skip placeholder rows ("-", "N/A", "...") and
+// anything without a dot-separated label (the API answers junk like "-" with a score).
+const PLACEHOLDER_DOMAINS = new Set(['-', '--', '—', '–', 'N/A', 'NA', 'NONE', 'NULL', '.']);
+const looksLikeDomain = (raw: string) => {
+  const d = raw
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/.*$/, '')
+    .toLowerCase();
+  if (!d || PLACEHOLDER_DOMAINS.has(d.toUpperCase())) return false;
+  return /^[a-z0-9\u00a1-\uffff-]+(\.[a-z0-9\u00a1-\uffff-]+)+$/.test(d);
+};
+
 async function getSheets() {
   const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!serviceAccountKey) throw new Error('GOOGLE_SERVICE_ACCOUNT_KEY not configured');
@@ -67,7 +81,7 @@ export async function POST(request: NextRequest) {
       for (let r = HEADER_ROWS; r < rows.length; r++) {
         const row = rows[r] || [];
         const domain = String(row[0] || '').trim(); // col A
-        if (!domain) continue;
+        if (!domain || !looksLikeDomain(domain)) continue;
         const da = row[2]; // col C
         const ss = row[3]; // col D
         if (needsFill(da) || needsFill(ss)) {
