@@ -1,14 +1,36 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { verifySessionToken } from '@/lib/session';
 
-export function middleware(request: NextRequest) {
-  const userRole = request.cookies.get('user_role')?.value as 'super_admin' | 'colleague' | undefined;
-  const isAuthenticated = request.cookies.get('super_admin_auth')?.value === 'true';
+// API paths that must stay reachable WITHOUT a session.
+// Everything else under /api/* now requires a valid admin session, so no admin
+// endpoint (paid-API routes included) can be driven anonymously.
+const PUBLIC_API_PATHS = new Set<string>([
+  '/api/auth/login',
+  '/api/auth/logout',
+]);
 
+export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const token = request.cookies.get('super_admin_auth')?.value;
+  const session = await verifySessionToken(token);
+  const isAuthenticated = session !== null;
+  const userRole =
+    session && 'role' in session
+      ? session.role
+      : (request.cookies.get('user_role')?.value as 'super_admin' | 'colleague' | undefined);
 
-  // Allow access to login page and api routes for everyone
-  if (path === '/login' || path.startsWith('/api/') || path === '/') {
+  // ── API routes ──
+  if (path.startsWith('/api/')) {
+    if (PUBLIC_API_PATHS.has(path)) return NextResponse.next();
+    if (!isAuthenticated) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.next();
+  }
+
+  // Allow the login page and the root for everyone.
+  if (path === '/login' || path === '/') {
     return NextResponse.next();
   }
 
@@ -17,15 +39,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Define colleague-allowed pages
+  // Colleague-allowed pages
   const colleagueAllowedPages = ['/domains', '/activity', '/contacts'];
-
-  // If user is colleague, check if they're trying to access unauthorized page
   if (userRole === 'colleague') {
-    const isAllowed = colleagueAllowedPages.some(allowedPath => path.startsWith(allowedPath));
-
+    const isAllowed = colleagueAllowedPages.some((allowedPath) => path.startsWith(allowedPath));
     if (!isAllowed) {
-      // Redirect to domains page (their default landing page)
       return NextResponse.redirect(new URL('/domains', request.url));
     }
   }

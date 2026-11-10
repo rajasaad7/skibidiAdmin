@@ -1,11 +1,14 @@
 import { cookies } from 'next/headers';
+import type { UserRole } from './auth-types';
+import { signSessionToken, verifySessionToken } from './session';
 
-export type UserRole = 'super_admin' | 'colleague';
+export type { UserRole };
 
 export async function checkAuth() {
   const cookieStore = await cookies();
-  const isAuthenticated = cookieStore.get('super_admin_auth')?.value === 'true';
-  return isAuthenticated;
+  const token = cookieStore.get('super_admin_auth')?.value;
+  const session = await verifySessionToken(token);
+  return session !== null;
 }
 
 export async function getAdminEmail() {
@@ -21,7 +24,8 @@ export async function getUserRole(): Promise<UserRole> {
 
 export async function setAuth(email: string, role: UserRole = 'super_admin') {
   const cookieStore = await cookies();
-  cookieStore.set('super_admin_auth', 'true', {
+  const token = await signSessionToken(email, role);
+  cookieStore.set('super_admin_auth', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 24 * 7, // 7 days

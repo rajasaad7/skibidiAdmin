@@ -58,9 +58,14 @@ async function getSheets() {
 // function log identifies the client behind each RapidAPI call.
 function describeCaller(request: NextRequest, mode: string, itemCount: number) {
   const h = request.headers;
+  // True client IP: behind Cloudflare the real visitor is in cf-connecting-ip
+  // (x-nf-client-connection-ip / the last x-forwarded-for hop is the proxy, which
+  // collapses every caller onto one shared address).
   const ip =
-    h.get('x-nf-client-connection-ip') ||
+    h.get('cf-connecting-ip') ||
+    h.get('true-client-ip') ||
     (h.get('x-forwarded-for') || '').split(',')[0].trim() ||
+    h.get('x-nf-client-connection-ip') ||
     'unknown';
   const ua = (h.get('user-agent') || '').slice(0, 160);
   const referer = h.get('referer') || '';
