@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchDapaBatch, RAPIDAPI_DAPA_MAX_URLS } from '@/lib/rapidapi-dapa-service';
+import { checkAuth } from '@/lib/auth';
 
 // googleapis needs the Node.js runtime (not edge). Each call is short
 // (list = one read; chunk = one fetch + one write), but allow headroom.
@@ -53,8 +54,42 @@ async function getSheets() {
   return { sheets: google.sheets({ version: 'v4', auth }), spreadsheetId };
 }
 
+// Who is calling: logged on EVERY request (before the auth gate) so the Netlify
+// function log identifies the client behind each RapidAPI call.
+function describeCaller(request: NextRequest, mode: string, itemCount: number) {
+  const h = request.headers;
+  const ip =
+    h.get('x-nf-client-connection-ip') ||
+    (h.get('x-forwarded-for') || '').split(',')[0].trim() ||
+    'unknown';
+  const ua = (h.get('user-agent') || '').slice(0, 160);
+  const referer = h.get('referer') || '';
+  return `mode=${mode} items=${itemCount} ip=${ip} referer="${referer}" ua="${ua}"`;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json().catch(() => ({}));
+    const mode = body.mode || 'list';
+    const itemCount = Array.isArray(body.items) ? body.items.length : 0;
+    const caller = describeCaller(request, mode, itemCount);
+
+    // Admin-only: this route spends RapidAPI quota, it must never be callable anonymously.
+    if (!(await checkAuth())) {
+      console.warn(`[update-da-sheet] DENIED (no admin session) ${caller}`);
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    console.log(`[update-da-sheet] ${caller}`);
+
+    // Kill switch: set RAPIDAPI_DAPA_DISABLED=true in the Netlify env to stop all vendor calls.
+    if (mode === 'chunk' && process.env.RAPIDAPI_DAPA_DISABLED === 'true') {
+      console.warn(`[update-da-sheet] BLOCKED by RAPIDAPI_DAPA_DISABLED ${caller}`);
+      return NextResponse.json(
+        { success: false, error: 'DA updater is disabled (RAPIDAPI_DAPA_DISABLED).' },
+        { status: 503 }
+      );
+    }
+
     const apiKey = process.env.RAPIDAPI_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -62,9 +97,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-
-    const body = await request.json().catch(() => ({}));
-    const mode = body.mode || 'list';
 
     const { sheets, spreadsheetId } = await getSheets();
 
@@ -106,7 +138,23 @@ export async function POST(request: NextRequest) {
       }
 
       const domains = items.map((x) => x.domain);
+      const vendorStarted = Date.now();
       const batchResults = await fetchDapaBatch(domains, apiKey);
+      const vendorMs = Date.now() - vendorStarted;
+      const vendorSummary = batchResults.reduce(
+        (acc, r) => {
+          if (r.error) { acc.error++; acc.firstError = acc.firstError || r.error; }
+          else if (r.found) acc.found++;
+          else acc.notFound++;
+          return acc;
+        },
+        { found: 0, notFound: 0, error: 0, firstError: '' as string }
+      );
+      console.log(
+        `[update-da-sheet] vendor call urls=${domains.length} ms=${vendorMs} found=${vendorSummary.found} notFound=${vendorSummary.notFound} error=${vendorSummary.error}` +
+          (vendorSummary.firstError ? ` firstError="${vendorSummary.firstError}"` : '') +
+          ` rows=${items[0]?.rowNumber}-${items[items.length - 1]?.rowNumber}`
+      );
 
       const dataUpdates: { range: string; values: any[][] }[] = [];
       const results: {
