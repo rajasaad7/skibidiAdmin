@@ -152,7 +152,7 @@ function buildLwGrantEmailShell({
                 <div class="cta-section"><a href="${url}" class="cta-button">${ctaLabel}</a></div>
             </div>
             <div class="footer">
-                ${footerLabel} &middot; <a href="${footerUrl}" style="color:#667eea; text-decoration:none;">${footerUrlLabel}</a>
+                ${footerLabel} &middot; <a href="${footerUrl}" style="color:#1D54C3; text-decoration:none;">${footerUrlLabel}</a>
             </div>
         </div>
     </div>
@@ -558,7 +558,7 @@ function marketplaceDisputeEmailShell(opts: {
             </div>
             <div class="footer">
                 Need help? Contact us at support@linkwatcher.io<br>
-                ${footerLabel} &middot; <a href="https://app.linkwatcher.io" style="color:#667eea; text-decoration:none;">app.linkwatcher.io</a>
+                ${footerLabel} &middot; <a href="https://app.linkwatcher.io" style="color:#1D54C3; text-decoration:none;">app.linkwatcher.io</a>
             </div>
         </div>
     </div>
