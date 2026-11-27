@@ -345,6 +345,11 @@ export function formatOrderDisputeResolvedEmail(data: {
   orderId: string;
   domainName?: string | null;
   disputeReason?: string | null;
+  // Publisher + refunded only: exact amounts read from the publisher ledger
+  // after the settle (see update-status route). feesRecovered is the platform
+  // fee amount the dispute trigger debited on top of the held earnings.
+  earningsWithheld?: number | null;
+  feesRecovered?: number | null;
 }) {
   const name = data.fullName?.trim() || 'there';
   const orderLabel = data.domainName
@@ -355,6 +360,15 @@ export function formatOrderDisputeResolvedEmail(data: {
       ? `https://app.linkwatcher.io/marketplace/publisher/orders/${data.orderId}`
       : `https://app.linkwatcher.io/marketplace/orders/${data.orderId}`;
   const completed = data.resolution === 'completed';
+  const usd = (n: number) => `$${n.toFixed(2)}`;
+  const withheld = Number(data.earningsWithheld) || 0;
+  const fees = Number(data.feesRecovered) || 0;
+  // Only state amounts when a platform fee recovery actually happened; every
+  // other case keeps the original wording.
+  const publisherRefundedCopy =
+    fees > 0 && withheld > 0
+      ? `<strong>What this means for you:</strong> the order has been refunded to the buyer and, under the Marketplace Terms of Use, you are responsible for the full amount refunded. The <strong>${usd(withheld)}</strong> in earnings that were on hold for this order will not be released, and <strong>${usd(fees)}</strong> in platform fees returned to the buyer has been deducted from your publisher balance (<strong>${usd(withheld + fees)}</strong> in total). If your balance is negative, it will be settled from your future earnings. If you believe this outcome is incorrect, please contact our support team.`
+      : `<strong>What this means for you:</strong> the order amount has been refunded to the buyer and the earnings that were on hold for this order will not be released. If you believe this outcome is incorrect, please contact our support team.`;
   const intro = completed
     ? `The dispute on your ${orderLabel} has been resolved and the order is now marked as <strong>completed</strong>.`
     : `The dispute on your ${orderLabel} could not be resolved and the order has been <strong>refunded</strong> to the buyer.`;
@@ -363,7 +377,7 @@ export function formatOrderDisputeResolvedEmail(data: {
       ? `<strong>What this means for you:</strong> the issue is considered fixed, the dispute is closed, and the earnings that were on hold for this order have been released back to your available balance. No further action is needed.`
       : `<strong>What this means for you:</strong> the publisher has resolved the issue raised in the dispute and the order is closed as completed. If you still see a problem with the delivered work, please contact our support team.`
     : data.role === 'publisher'
-      ? `<strong>What this means for you:</strong> the order amount has been refunded to the buyer and the earnings that were on hold for this order will not be released. If you believe this outcome is incorrect, please contact our support team.`
+      ? publisherRefundedCopy
       : `<strong>What this means for you:</strong> the order amount has been credited back to your Linkwatcher wallet balance. You can use it on any future marketplace order.`;
   return marketplaceDisputeEmailShell({
     badgeText: completed ? 'Dispute Resolved' : 'Order Refunded',

@@ -189,6 +189,36 @@ export async function POST(request: NextRequest) {
     ) {
       try {
         const resolution = status as 'completed' | 'refunded';
+
+        // On a refund the DB trigger may also debit the publisher the platform
+        // fees returned to the buyer. Read the exact figures back from the
+        // ledger so the publisher email states real amounts. Any failure here
+        // falls back to the generic wording (never blocks the notification).
+        let earningsWithheld: number | null = null;
+        let feesRecovered: number | null = null;
+        if (resolution === 'refunded') {
+          try {
+            const { data: ledgerRows, error: ledgerError } = await supabase
+              .from('publisher_balance_transactions')
+              .select('type, amount, metadata')
+              .eq('relatedOrderId', orderId);
+            if (!ledgerError && ledgerRows) {
+              let held = 0;
+              let fees = 0;
+              for (const row of ledgerRows as any[]) {
+                const amount = Number(row.amount) || 0;
+                const meta = row.metadata || {};
+                if (meta.disputeFeeRecovery === true) fees -= amount;
+                else if (meta.dispute === true && (row.type === 'chargeback' || row.type === 'adjustment')) held -= amount;
+              }
+              earningsWithheld = Math.round(held * 100) / 100;
+              feesRecovered = Math.round(fees * 100) / 100;
+            }
+          } catch (ledgerErr) {
+            console.error('Dispute settlement ledger lookup failed:', ledgerErr);
+          }
+        }
+
         const recipients: { role: 'publisher' | 'buyer'; userId: string | null }[] = [
           { role: 'publisher', userId: existingOrder.publisherId },
           { role: 'buyer', userId: existingOrder.buyerId },
@@ -218,6 +248,7 @@ export async function POST(request: NextRequest) {
                   orderId,
                   domainName: existingOrder.domains?.domainName || null,
                   disputeReason: existingOrder.disputeReason,
+                  ...(recipient.role === 'publisher' ? { earningsWithheld, feesRecovered } : {}),
                 }),
                 senderName: 'Linkwatcher Marketplace',
                 senderEmail: 'marketplace@linkwatcher.io',
