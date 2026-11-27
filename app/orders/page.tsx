@@ -259,7 +259,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [serviceTypeFilters, setServiceTypeFilters] = useState<string[]>(['guest_post', 'link_insertion', 'featured_domain']);
-  const [stats, setStats] = useState({ all: 0, paid: 0, overdue: 0, accepted: 0, submitted: 0, completed: 0, refunded: 0 });
+  const [stats, setStats] = useState({ all: 0, paid: 0, overdue: 0, accepted: 0, submitted: 0, disputed: 0, completed: 0, refunded: 0 });
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 50, total: 0, totalPages: 0 });
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -413,6 +413,7 @@ export default function OrdersPage() {
     if (status === 'overdue') return stats.overdue;
     if (status === 'accepted') return stats.accepted;
     if (status === 'submitted') return stats.submitted;
+    if (status === 'disputed') return stats.disputed;
     if (status === 'completed') return stats.completed;
     if (status === 'refunded') return stats.refunded;
     return 0;
@@ -840,8 +841,8 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
-        {['all', 'paid', 'overdue', 'accepted', 'submitted', 'completed', 'refunded'].map((status) => (
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4">
+        {['all', 'paid', 'overdue', 'accepted', 'submitted', 'disputed', 'completed', 'refunded'].map((status) => (
           <button
             key={`filter-${status}`}
             onClick={() => setFilter(status)}
